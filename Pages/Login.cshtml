@@ -11,8 +11,8 @@
     {
         try
         {
-            // Tự động tạo bảng TaiKhoans nếu chưa có trong Database
-            string sqlCreateTaiKhoanTable = @"
+            // Tự động khởi tạo bảng TaiKhoans nếu chưa có
+            string sqlCreate = @"
                 CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (
                     ""Id"" SERIAL PRIMARY KEY,
                     ""MaTruong"" TEXT NOT NULL,
@@ -20,9 +20,9 @@
                     ""MatKhau"" TEXT NOT NULL,
                     ""Role"" TEXT NOT NULL
                 );";
-            await Db.Database.ExecuteSqlRawAsync(sqlCreateTaiKhoanTable);
+            await Db.Database.ExecuteSqlRawAsync(sqlCreate);
 
-            // Kiểm tra và khởi tạo tài khoản Sở mặc định
+            // Tạo tài khoản Sở mặc định
             if (!await Db.TaiKhoans.AnyAsync(x => x.Role == "So"))
             {
                 Db.TaiKhoans.Add(new TaiKhoan { 
@@ -49,8 +49,11 @@
                 var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
                 await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
 
-                if (acc.Role == "So") Response.Redirect("/AdminSo");
-                else Response.Redirect("/AdminTruong");
+                // Chuyển hướng chuẩn trong ASP.NET Core
+                string targetUrl = acc.Role == "So" ? "/AdminSo" : "/AdminTruong";
+                HttpContext.Response.Headers["Location"] = targetUrl;
+                HttpContext.Response.StatusCode = 302;
+                return;
             }
             else 
             { 
