@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 
-// Tắt hoàn toàn File System Watcher để tránh lỗi inotify trên Render
+// Chuyển cơ chế theo dõi file sang Polling trước khi khởi tạo WebApp
 Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
 
-var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions { Args = args });
+var builder = WebApplication.CreateBuilder(args);
 
+// Xóa nguồn theo dõi file appsettings để tránh kích hoạt inotify
+builder.Configuration.Sources.Clear();
 builder.Configuration.AddEnvironmentVariables();
-builder.Services.AddRouting();
+
 builder.Services.AddRazorPages();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
