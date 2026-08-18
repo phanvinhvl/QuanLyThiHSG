@@ -1,71 +1,4 @@
 @page
-@attribute [IgnoreAntiforgeryToken]
-@using System.Security.Claims
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
-@using Microsoft.EntityFrameworkCore
-@inject AppDbContext Db
-@{
-    string thongBao = "";
-    if (HttpMethods.IsPost(Request.Method))
-    {
-        try
-        {
-            // Tự động khởi tạo bảng TaiKhoans nếu chưa có
-            string sqlCreate = @"
-                CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (
-                    ""Id"" SERIAL PRIMARY KEY,
-                    ""MaTruong"" TEXT NOT NULL,
-                    ""TenTruong"" TEXT NOT NULL,
-                    ""MatKhau"" TEXT NOT NULL,
-                    ""Role"" TEXT NOT NULL
-                );";
-            await Db.Database.ExecuteSqlRawAsync(sqlCreate);
-
-            // Tạo tài khoản Sở mặc định
-            if (!await Db.TaiKhoans.AnyAsync(x => x.Role == "So"))
-            {
-                Db.TaiKhoans.Add(new TaiKhoan { 
-                    MaTruong = "SO_GD", 
-                    TenTruong = "Sở Giáo Dục & Đào Tạo", 
-                    MatKhau = "so@123456", 
-                    Role = "So" 
-                });
-                await Db.SaveChangesAsync();
-            }
-
-            var maTruong = Request.Form["maTruong"].ToString();
-            var matKhau = Request.Form["matKhau"].ToString();
-
-            var acc = await Db.TaiKhoans.FirstOrDefaultAsync(x => x.MaTruong == maTruong && x.MatKhau == matKhau);
-            if (acc != null)
-            {
-                var claims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.Name, acc.MaTruong),
-                    new Claim("TenTruong", acc.TenTruong),
-                    new Claim(ClaimTypes.Role, acc.Role)
-                };
-                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-                await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
-
-                // Chuyển hướng chuẩn trong ASP.NET Core
-                string targetUrl = acc.Role == "So" ? "/AdminSo" : "/AdminTruong";
-                HttpContext.Response.Headers["Location"] = targetUrl;
-                HttpContext.Response.StatusCode = 302;
-                return;
-            }
-            else 
-            { 
-                thongBao = "Sai mã đăng nhập hoặc mật khẩu!"; 
-            }
-        }
-        catch (Exception ex)
-        {
-            thongBao = "Lỗi hệ thống: " + ex.Message;
-        }
-    }
-}
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -76,18 +9,57 @@
 <body class="bg-light d-flex align-items-center justify-content-center" style="height: 100vh;">
     <div class="card shadow p-4" style="width: 400px;">
         <h4 class="text-center text-primary mb-3">ĐĂNG NHẬP HỆ THỐNG</h4>
-        @if (!string.IsNullOrEmpty(thongBao)) { <div class="alert alert-danger">@thongBao</div> }
-        <form method="post">
+        <div id="thongBao"></div>
+        <form id="formLogin">
             <div class="mb-3">
                 <label class="form-label">Mã tài khoản (Sở/Mã Trường)</label>
-                <input type="text" name="maTruong" class="form-control" required placeholder="Ví dụ: SO_GD">
+                <input type="text" id="maTruong" class="form-control" required placeholder="Ví dụ: SO_GD">
             </div>
             <div class="mb-3">
                 <label class="form-label">Mật khẩu</label>
-                <input type="password" name="matKhau" class="form-control" required>
+                <input type="password" id="matKhau" class="form-control" required>
             </div>
-            <button type="submit" class="btn btn-primary w-100">Đăng Nhập</button>
+            <button type="submit" id="btnLogin" class="btn btn-primary w-100">Đăng Nhập</button>
         </form>
     </div>
+
+    <script>
+        document.getElementById('formLogin').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btnLogin');
+            const divTB = document.getElementById('thongBao');
+            
+            btn.disabled = true;
+            btn.innerHTML = 'Đang xử lý...';
+            divTB.innerHTML = '';
+
+            const payload = {
+                maTruong: document.getElementById('maTruong').value,
+                matKhau: document.getElementById('matKhau').value
+            };
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    window.location.href = data.redirectUrl;
+                } else {
+                    divTB.innerHTML = `<div class="alert alert-danger">${data.message || data.detail || 'Lỗi đăng nhập!'}</div>`;
+                    btn.disabled = false;
+                    btn.innerHTML = 'Đăng Nhập';
+                }
+            } catch (err) {
+                divTB.innerHTML = `<div class="alert alert-danger">Lỗi kết nối máy chủ!</div>`;
+                btn.disabled = false;
+                btn.innerHTML = 'Đăng Nhập';
+            }
+        };
+    </script>
 </body>
 </html>
