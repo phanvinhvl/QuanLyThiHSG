@@ -1,9 +1,10 @@
 @page
+@attribute [IgnoreAntiforgeryToken]
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @{
     if (!User.IsInRole("So")) { Response.Redirect("/Login"); return; }
 
-    // Xử lý thêm tài khoản trường
     if (HttpMethods.IsPost(Request.Method) && Request.Form["action"] == "themTruong")
     {
         var ma = Request.Form["maTruong"].ToString();
