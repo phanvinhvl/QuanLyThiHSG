@@ -36,8 +36,8 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
 {
     try
     {
-        // Khởi tạo bảng TaiKhoans nếu chưa tồn tại
-        string sqlCreate = @"
+        // 1. Tự động khởi tạo bảng TaiKhoans nếu chưa có
+        string sqlCreateTaiKhoan = @"
             CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (
                 ""Id"" SERIAL PRIMARY KEY,
                 ""MaTruong"" TEXT NOT NULL,
@@ -45,9 +45,22 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
                 ""MatKhau"" TEXT NOT NULL,
                 ""Role"" TEXT NOT NULL
             );";
-        await db.Database.ExecuteSqlRawAsync(sqlCreate);
+        await db.Database.ExecuteSqlRawAsync(sqlCreateTaiKhoan);
 
-        // Khởi tạo tài khoản Sở mặc định
+        // 2. Tự động khởi tạo bảng ThiSinhs nếu chưa có
+        string sqlCreateThiSinh = @"
+            CREATE TABLE IF NOT EXISTS ""ThiSinhs"" (
+                ""Id"" SERIAL PRIMARY KEY,
+                ""HoTen"" TEXT NOT NULL,
+                ""CCCD"" TEXT NOT NULL,
+                ""TenTruong"" TEXT NOT NULL,
+                ""MaTruong"" TEXT NOT NULL,
+                ""MonThi"" TEXT NOT NULL,
+                ""NgayDangKy"" TIMESTAMP WITH TIME ZONE NOT NULL
+            );";
+        await db.Database.ExecuteSqlRawAsync(sqlCreateThiSinh);
+
+        // 3. Khởi tạo tài khoản Sở mặc định nếu chưa có
         if (!await db.TaiKhoans.AnyAsync(x => x.Role == "So"))
         {
             db.TaiKhoans.Add(new TaiKhoan { MaTruong = "SO_GD", TenTruong = "Sở Giáo Dục & Đào Tạo", MatKhau = "so@123456", Role = "So" });
@@ -74,7 +87,6 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
         return Results.Problem("Lỗi hệ thống: " + ex.Message);
     }
 });
-
 // --- API SỞ: XUẤT EXCEL ---
 app.MapGet("/api/so/export-excel", async (AppDbContext db, HttpContext ctx) =>
 {
