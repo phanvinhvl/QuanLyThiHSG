@@ -24,22 +24,21 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connect
 
 var app = builder.Build();
 
-app.Use(async (context, next) =>
+// Khởi tạo bảng ngay khi app chạy
+using (var scope = app.Services.CreateScope())
 {
-    using (var scope = app.Services.CreateScope())
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    try
     {
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await db.Database.EnsureCreatedAsync();
-        
-        // Khởi tạo tài khoản Sở mặc định nếu chưa có (User: admin / Pass: so@123456)
-        if (!await db.TaiKhoans.AnyAsync(x => x.Role == "So"))
+        db.Database.EnsureCreated();
+        if (!db.TaiKhoans.Any(x => x.Role == "So"))
         {
             db.TaiKhoans.Add(new TaiKhoan { MaTruong = "SO_GD", TenTruong = "Sở Giáo Dục & Đào Tạo", MatKhau = "so@123456", Role = "So" });
-            await db.SaveChangesAsync();
+            db.SaveChanges();
         }
     }
-    await next();
-});
+    catch { /* Bỏ qua nếu bảng đã tồn tại */ }
+}
 
 app.UseStaticFiles();
 app.UseRouting();
@@ -47,7 +46,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
 
-// --- API DÀNH CHO SỞ: XUẤT TOÀN BỘ EXCEL ---
+// --- API SỞ: XUẤT EXCEL ---
 app.MapGet("/api/so/export-excel", async (AppDbContext db, HttpContext ctx) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
@@ -77,7 +76,7 @@ app.MapGet("/api/so/export-excel", async (AppDbContext db, HttpContext ctx) =>
     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_ThiSinh_ToanTinh.xlsx");
 });
 
-// --- API DÀNH CHO TRƯỜNG: UPLOAD EXCEL ĐĂNG KÝ ---
+// --- API TRƯỜNG: UPLOAD EXCEL ---
 app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, HttpContext ctx) =>
 {
     if (!ctx.User.IsInRole("Truong")) return Results.Unauthorized();
@@ -94,7 +93,7 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
     int rowCount = ws.Dimension.Rows;
     int countSuccess = 0;
 
-    for (int row = 2; row <= rowCount; row++) // Bắt đầu từ dòng 2 (bỏ qua tiêu đề)
+    for (int row = 2; row <= rowCount; row++)
     {
         var hoTen = ws.Cells[row, 1].Value?.ToString()?.Trim();
         var cccd = ws.Cells[row, 2].Value?.ToString()?.Trim();
@@ -124,7 +123,6 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
 
 app.Run();
 
-// --- DATA MODELS ---
 public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
@@ -135,10 +133,10 @@ public class AppDbContext : DbContext
 public class TaiKhoan
 {
     public int Id { get; set; }
-    public string MaTruong { get; set; } = ""; // Mã định danh tài khoản
+    public string MaTruong { get; set; } = "";
     public string TenTruong { get; set; } = "";
     public string MatKhau { get; set; } = "";
-    public string Role { get; set; } = "Truong"; // "So" hoặc "Truong"
+    public string Role { get; set; } = "Truong";
 }
 
 public class ThiSinh
