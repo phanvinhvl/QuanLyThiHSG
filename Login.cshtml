@@ -1,0 +1,55 @@
+@page
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject AppDbContext Db
+@{
+    string thongBao = "";
+    if (HttpMethods.IsPost(Request.Method))
+    {
+        var maTruong = Request.Form["maTruong"].ToString();
+        var matKhau = Request.Form["matKhau"].ToString();
+
+        var acc = Db.TaiKhoans.FirstOrDefault(x => x.MaTruong == maTruong && x.MatKhau == matKhau);
+        if (acc != null)
+        {
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, acc.MaTruong),
+                new Claim("TenTruong", acc.TenTruong),
+                new Claim(ClaimTypes.Role, acc.Role)
+            };
+            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity)).Wait();
+
+            if (acc.Role == "So") Response.Redirect("/AdminSo");
+            else Response.Redirect("/AdminTruong");
+        }
+        else { thongBao = "Sai mã đăng nhập hoặc mật khẩu!"; }
+    }
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Đăng Nhập Hệ Thống Thi HSG</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center" style="height: 100vh;">
+    <div class="card shadow p-4" style="width: 400px;">
+        <h4 class="text-center text-primary mb-3">ĐĂNG NHẬP HỆ THỐNG</h4>
+        @if (!string.IsNullOrEmpty(thongBao)) { <div class="alert alert-danger">@thongBao</div> }
+        <form method="post">
+            <div class="mb-3">
+                <label class="form-label">Mã tài khoản (Sở/Mã Trường)</label>
+                <input type="text" name="maTruong" class="form-control" required placeholder="Ví dụ: THPT_THOINHI">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Mật khẩu</label>
+                <input type="password" name="matKhau" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Đăng Nhập</button>
+        </form>
+    </div>
+</body>
+</html>
