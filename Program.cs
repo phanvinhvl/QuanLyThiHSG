@@ -129,9 +129,12 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
     using var stream = new MemoryStream();
     await file.CopyToAsync(stream);
     using var package = new ExcelPackage(stream);
-    var ws = package.Workbook.Worksheets[0];
+    
+    if (package.Workbook.Worksheets.Count == 0) 
+        return Results.BadRequest(new { message = "File Excel không có dữ liệu!" });
 
-    int rowCount = ws.Dimension.Rows;
+    var ws = package.Workbook.Worksheets[0];
+    int rowCount = ws.Dimension?.Rows ?? 0;
     int countSuccess = 0;
 
     for (int row = 2; row <= rowCount; row++)
@@ -160,7 +163,7 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
 
     await db.SaveChangesAsync();
     return Results.Ok(new { message = $"Đã nhập thành công {countSuccess} học sinh!" });
-});
+}).DisableAntiforgery();
 
 app.Run();
 
