@@ -17,6 +17,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     .AddCookie(options => {
         options.LoginPath = "/Login";
         options.AccessDeniedPath = "/AccessDenied";
+        options.Cookie.Name = "AuthCookie";
     });
 
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
@@ -24,27 +25,55 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connect
 
 var app = builder.Build();
 
-// Khởi tạo bảng ngay khi app chạy
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    try
-    {
-        db.Database.EnsureCreated();
-        if (!db.TaiKhoans.Any(x => x.Role == "So"))
-        {
-            db.TaiKhoans.Add(new TaiKhoan { MaTruong = "SO_GD", TenTruong = "Sở Giáo Dục & Đào Tạo", MatKhau = "so@123456", Role = "So" });
-            db.SaveChanges();
-        }
-    }
-    catch { /* Bỏ qua nếu bảng đã tồn tại */ }
-}
-
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
+
+// --- API XỬ LÝ ĐĂNG NHẬP ---
+app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginRequest req) =>
+{
+    try
+    {
+        // Khởi tạo bảng TaiKhoans nếu chưa tồn tại
+        string sqlCreate = @"
+            CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (
+                ""Id"" SERIAL PRIMARY KEY,
+                ""MaTruong"" TEXT NOT NULL,
+                ""TenTruong"" TEXT NOT NULL,
+                ""MatKhau"" TEXT NOT NULL,
+                ""Role"" TEXT NOT NULL
+            );";
+        await db.Database.ExecuteSqlRawAsync(sqlCreate);
+
+        // Khởi tạo tài khoản Sở mặc định
+        if (!await db.TaiKhoans.AnyAsync(x => x.Role == "So"))
+        {
+            db.TaiKhoans.Add(new TaiKhoan { MaTruong = "SO_GD", TenTruong = "Sở Giáo Dục & Đào Tạo", MatKhau = "so@123456", Role = "So" });
+            await db.SaveChangesAsync();
+        }
+
+        var acc = await db.TaiKhoans.FirstOrDefaultAsync(x => x.MaTruong == req.MaTruong && x.MatKhau == req.MatKhau);
+        if (acc == null) return Results.BadRequest(new { message = "Mã tài khoản hoặc mật khẩu không chính xác!" });
+
+        var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.Name, acc.MaTruong),
+            new Claim("TenTruong", acc.TenTruong),
+            new Claim(ClaimTypes.Role, acc.Role)
+        };
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+        string redirectUrl = acc.Role == "So" ? "/AdminSo" : "/AdminTruong";
+        return Results.Ok(new { redirectUrl });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem("Lỗi hệ thống: " + ex.Message);
+    }
+});
 
 // --- API SỞ: XUẤT EXCEL ---
 app.MapGet("/api/so/export-excel", async (AppDbContext db, HttpContext ctx) =>
@@ -123,11 +152,18 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
 
 app.Run();
 
+// --- DATA MODELS ---
 public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
     public DbSet<ThiSinh> ThiSinhs { get; set; }
     public DbSet<TaiKhoan> TaiKhoans { get; set; }
+}
+
+public class LoginRequest
+{
+    public string MaTruong { get; set; } = "";
+    public string MatKhau { get; set; } = "";
 }
 
 public class TaiKhoan
