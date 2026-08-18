@@ -3,30 +3,49 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @{
     string thongBao = "";
     if (HttpMethods.IsPost(Request.Method))
     {
-        var maTruong = Request.Form["maTruong"].ToString();
-        var matKhau = Request.Form["matKhau"].ToString();
-
-        var acc = Db.TaiKhoans.FirstOrDefault(x => x.MaTruong == maTruong && x.MatKhau == matKhau);
-        if (acc != null)
+        try
         {
-            var claims = new List<Claim>
+            // Tự động kiểm tra và tạo bảng/tài khoản mặc định nếu chưa tồn tại
+            await Db.Database.EnsureCreatedAsync();
+            if (!await Db.TaiKhoans.AnyAsync(x => x.Role == "So"))
             {
-                new Claim(ClaimTypes.Name, acc.MaTruong),
-                new Claim("TenTruong", acc.TenTruong),
-                new Claim(ClaimTypes.Role, acc.Role)
-            };
-            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-            HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity)).Wait();
+                Db.TaiKhoans.Add(new TaiKhoan { MaTruong = "SO_GD", TenTruong = "Sở Giáo Dục & Đào Tạo", MatKhau = "so@123456", Role = "So" });
+                await Db.SaveChangesAsync();
+            }
 
-            if (acc.Role == "So") Response.Redirect("/AdminSo");
-            else Response.Redirect("/AdminTruong");
+            var maTruong = Request.Form["maTruong"].ToString();
+            var matKhau = Request.Form["matKhau"].ToString();
+
+            var acc = await Db.TaiKhoans.FirstOrDefaultAsync(x => x.MaTruong == maTruong && x.MatKhau == matKhau);
+            if (acc != null)
+            {
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.Name, acc.MaTruong),
+                    new Claim("TenTruong", acc.TenTruong),
+                    new Claim(ClaimTypes.Role, acc.Role)
+                };
+                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+                if (acc.Role == "So") Response.Redirect("/AdminSo");
+                else Response.Redirect("/AdminTruong");
+            }
+            else 
+            { 
+                thongBao = "Sai mã đăng nhập hoặc mật khẩu!"; 
+            }
         }
-        else { thongBao = "Sai mã đăng nhập hoặc mật khẩu!"; }
+        catch (Exception ex)
+        {
+            thongBao = "Lỗi hệ thống: " + ex.Message;
+        }
     }
 }
 <!DOCTYPE html>
