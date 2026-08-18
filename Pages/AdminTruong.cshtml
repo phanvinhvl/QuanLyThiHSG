@@ -1,4 +1,6 @@
 @page
+@attribute [IgnoreAntiforgeryToken]
+@using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @{
     if (!User.IsInRole("Truong")) { Response.Redirect("/Login"); return; }
@@ -21,7 +23,7 @@
             <p class="text-muted small mb-2">Cấu trúc file Excel: Dòng 1 là tiêu đề. Dòng 2 trở đi điền: <b>Cột A (Họ Tên), Cột B (Số CCCD), Cột C (Môn Thi)</b>.</p>
             <form id="formUpload" class="d-flex gap-2">
                 <input type="file" id="fileExcel" accept=".xlsx" class="form-control" style="max-width: 400px;" required>
-                <button type="submit" class="btn btn-success">Upload File Excel</button>
+                <button type="submit" id="btnUpload" class="btn btn-success">Upload File Excel</button>
             </form>
             <div id="statusUpload" class="mt-2"></div>
         </div>
@@ -49,18 +51,42 @@
     <script>
         document.getElementById('formUpload').onsubmit = async (e) => {
             e.preventDefault();
+            const btn = document.getElementById('btnUpload');
+            const statusDiv = document.getElementById('statusUpload');
             const fileInput = document.getElementById('fileExcel');
+
+            if (!fileInput.files.length) {
+                alert('Vui lòng chọn file Excel!');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Đang tải lên...';
+            statusDiv.innerHTML = '';
+
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
-            const res = await fetch('/api/truong/upload-excel', { method: 'POST', body: formData });
-            const data = await res.json();
-            
-            if (res.ok) {
-                alert(data.message);
-                location.reload();
-            } else {
-                document.getElementById('statusUpload').innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+            try {
+                const res = await fetch('/api/truong/upload-excel', { 
+                    method: 'POST', 
+                    body: formData 
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    statusDiv.innerHTML = `<div class="alert alert-danger">${data.message || 'Lỗi tải file!'}</div>`;
+                    btn.disabled = false;
+                    btn.innerText = 'Upload File Excel';
+                }
+            } catch (err) {
+                statusDiv.innerHTML = `<div class="alert alert-danger">Lỗi kết nối máy chủ!</div>`;
+                btn.disabled = false;
+                btn.innerText = 'Upload File Excel';
             }
         };
     </script>
