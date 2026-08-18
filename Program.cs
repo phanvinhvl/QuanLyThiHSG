@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 
-// Chuyển cơ chế theo dõi file sang Polling để tránh lỗi inotify trên Render
 Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,20 +9,24 @@ builder.Configuration.AddEnvironmentVariables();
 
 builder.Services.AddRazorPages();
 
-// Đọc trực tiếp chuỗi kết nối dạng Key-Value từ Render
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL") 
-    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+// Đọc chuỗi kết nối trực tiếp từ Render
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+// Tự động khởi tạo bảng khi ứng dụng nhận request đầu tiên (tránh crash lúc startup)
+app.Use(async (context, next) =>
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
-}
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.EnsureCreatedAsync();
+    }
+    await next();
+});
 
 app.UseStaticFiles();
 app.UseRouting();
