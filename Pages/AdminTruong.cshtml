@@ -1,0 +1,68 @@
+@page
+@inject AppDbContext Db
+@{
+    if (!User.IsInRole("Truong")) { Response.Redirect("/Login"); return; }
+    var maTruong = User.Identity?.Name;
+    var danhSach = Db.ThiSinhs.Where(x => x.MaTruong == maTruong).OrderBy(x => x.HoTen).ToList();
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Quản Trị Cấp Trường</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="p-4 bg-light">
+    <div class="container">
+        <h3 class="text-primary mb-3">ĐĂNG KÝ THI HSG - @User.FindFirst("TenTruong")?.Value</h3>
+        
+        <div class="card p-3 mb-4 shadow-sm">
+            <h5>Upload Danh Sách Học Sinh Qua Excel</h5>
+            <p class="text-muted small mb-2">Cấu trúc file Excel: Dòng 1 là tiêu đề. Dòng 2 trở đi điền: <b>Cột A (Họ Tên), Cột B (Số CCCD), Cột C (Môn Thi)</b>.</p>
+            <form id="formUpload" class="d-flex gap-2">
+                <input type="file" id="fileExcel" accept=".xlsx" class="form-control" style="max-width: 400px;" required>
+                <button type="submit" class="btn btn-success">Upload File Excel</button>
+            </form>
+            <div id="statusUpload" class="mt-2"></div>
+        </div>
+
+        <h5>Danh Sách Học Sinh Đã Đăng Ký (@danhSach.Count em)</h5>
+        <table class="table table-striped table-bordered bg-white">
+            <thead class="table-dark">
+                <tr><th>STT</th><th>Họ và Tên</th><th>Số CCCD/Định Danh</th><th>Môn Dự Thi</th><th>Thời Gian Đăng Ký</th></tr>
+            </thead>
+            <tbody>
+                @for (int i = 0; i < danhSach.Count; i++)
+                {
+                    <tr>
+                        <td>@(i + 1)</td>
+                        <td>@danhSach[i].HoTen</td>
+                        <td>@danhSach[i].CCCD</td>
+                        <td><span class="badge bg-primary">@danhSach[i].MonThi</span></td>
+                        <td>@danhSach[i].NgayDangKy.ToString("dd/MM/yyyy HH:mm")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.getElementById('formUpload').onsubmit = async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('fileExcel');
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            const res = await fetch('/api/truong/upload-excel', { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert(data.message);
+                location.reload();
+            } else {
+                document.getElementById('statusUpload').innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+            }
+        };
+    </script>
+</body>
+</html>
