@@ -1,17 +1,14 @@
 using Microsoft.EntityFrameworkCore;
-var builder = WebApplication.CreateBuilder(new WebApplicationOptions
-{
-    Args = args
-});
-builder.Host.ConfigureAppConfiguration((hostingContext, config) =>
-{
-    config.Sources.Clear();
-    config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
-    config.AddEnvironmentVariables();
-});
 
-// Cấu hình Razor Pages & Database
+// Tắt hoàn toàn File System Watcher để tránh lỗi inotify trên Render
+Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
+
+var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions { Args = args });
+
+builder.Configuration.AddEnvironmentVariables();
+builder.Services.AddRouting();
 builder.Services.AddRazorPages();
+
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
     ?? Environment.GetEnvironmentVariable("DATABASE_URL");
 
@@ -20,7 +17,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 var app = builder.Build();
 
-// Tự động tạo bảng Database khi khởi chạy
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -31,7 +27,6 @@ app.UseStaticFiles();
 app.UseRouting();
 app.MapRazorPages();
 
-// API tiếp nhận đăng ký từ Form
 app.MapPost("/api/dang-ky", async (AppDbContext db, ThiSinh model) =>
 {
     if (string.IsNullOrEmpty(model.HoTen) || string.IsNullOrEmpty(model.CCCD))
@@ -49,7 +44,6 @@ app.MapPost("/api/dang-ky", async (AppDbContext db, ThiSinh model) =>
     return Results.Ok(new { message = "Đăng ký thành công!" });
 });
 
-// API duyệt hồ sơ cho Quản trị viên
 app.MapPost("/api/duyet/{id}", async (int id, AppDbContext db) =>
 {
     var ts = await db.ThiSinhs.FindAsync(id);
@@ -61,7 +55,6 @@ app.MapPost("/api/duyet/{id}", async (int id, AppDbContext db) =>
 
 app.Run();
 
-// Data Models
 public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
