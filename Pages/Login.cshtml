@@ -11,11 +11,26 @@
     {
         try
         {
-            // Tự động kiểm tra và tạo bảng/tài khoản mặc định nếu chưa tồn tại
-            await Db.Database.EnsureCreatedAsync();
+            // Tự động tạo bảng TaiKhoans nếu chưa có trong Database
+            string sqlCreateTaiKhoanTable = @"
+                CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""MaTruong"" TEXT NOT NULL,
+                    ""TenTruong"" TEXT NOT NULL,
+                    ""MatKhau"" TEXT NOT NULL,
+                    ""Role"" TEXT NOT NULL
+                );";
+            await Db.Database.ExecuteSqlRawAsync(sqlCreateTaiKhoanTable);
+
+            // Kiểm tra và khởi tạo tài khoản Sở mặc định
             if (!await Db.TaiKhoans.AnyAsync(x => x.Role == "So"))
             {
-                Db.TaiKhoans.Add(new TaiKhoan { MaTruong = "SO_GD", TenTruong = "Sở Giáo Dục & Đào Tạo", MatKhau = "so@123456", Role = "So" });
+                Db.TaiKhoans.Add(new TaiKhoan { 
+                    MaTruong = "SO_GD", 
+                    TenTruong = "Sở Giáo Dục & Đào Tạo", 
+                    MatKhau = "so@123456", 
+                    Role = "So" 
+                });
                 await Db.SaveChangesAsync();
             }
 
