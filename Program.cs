@@ -397,3 +397,10 @@ public class ThiSinh
     public string? PhongThi { get; set; }
     public DateTime NgayDangKy { get; set; }
 }
+public class UpdateThiSinhReq
+{
+    public string HoTen { get; set; } = "";
+    public string CCCD { get; set; } = "";
+    public string MonThi { get; set; } = "";
+    public string TenTruong { get; set; } = "";
+}
