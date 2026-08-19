@@ -242,6 +242,7 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
 }).DisableAntiforgery();
 
 // --- API 6: SỬA & XÓA THÍ SINH (CẤP TRƯỜNG) ---
+// --- API 6: SỬA TẤT CẢ THÔNG TIN THÍ SINH (CẤP TRƯỜNG) ---
 app.MapPut("/api/truong/sua-thisinh/{id}", async (int id, AppDbContext db, HttpContext ctx, UpdateThiSinhReq req) =>
 {
     if (!ctx.User.IsInRole("Truong")) return Results.Unauthorized();
@@ -250,12 +251,18 @@ app.MapPut("/api/truong/sua-thisinh/{id}", async (int id, AppDbContext db, HttpC
     var ts = await db.ThiSinhs.FirstOrDefaultAsync(x => x.Id == id && x.MaTruong == maTruong);
     if (ts == null) return Results.NotFound(new { message = "Không tìm thấy học sinh!" });
 
-    ts.HoTen = req.HoTen;
-    ts.CCCD = req.CCCD;
-    ts.MonThi = req.MonThi;
+    // Cập nhật tất cả các trường thông tin
+    ts.HoTen = req.HoTen?.Trim() ?? ts.HoTen;
+    ts.CCCD = req.CCCD?.Trim() ?? ts.CCCD;
+    ts.MonThi = req.MonThi?.Trim() ?? ts.MonThi;
+    if (!string.IsNullOrEmpty(req.TenTruong))
+    {
+        ts.TenTruong = req.TenTruong.Trim();
+    }
+    
     await db.SaveChangesAsync();
 
-    return Results.Ok(new { message = "Cập nhật thành công!" });
+    return Results.Ok(new { message = "Cập nhật thông tin học sinh thành công!" });
 }).DisableAntiforgery();
 
 app.MapDelete("/api/truong/xoa-thisinh/{id}", async (int id, AppDbContext db, HttpContext ctx) =>
