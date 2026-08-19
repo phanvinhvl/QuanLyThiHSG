@@ -143,6 +143,8 @@ app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) 
 
     foreach (var phong in listPhong)
     {
+        if (string.IsNullOrEmpty(phong)) continue;
+
         string sheetName = phong.Replace("/", "-").Replace(":", "-");
         if (sheetName.Length > 30) sheetName = sheetName.Substring(0, 30);
 
@@ -166,7 +168,7 @@ app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) 
 
         ws.Cells[3, 1, 3, 4].Merge = true;
         ws.Cells[3, 1].Value = $"Khóa ngày {DateTime.Now:dd/MM/yyyy}";
-        ws.Cells[3, 1].Style.Font.Underline = true;
+        ws.Cells[3, 1].Style.Font.UnderLine = true; // Sửa lỗi CS1061
         ws.Cells[3, 1].Style.Font.Bold = true;
         ws.Cells[3, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 
@@ -222,12 +224,17 @@ app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) 
         ws.Cells[lastRow, 5].Style.Font.Bold = true;
         ws.Cells[lastRow, 5].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 
-        ws.Cells[ws.Dimension.Address].AutoFitColumns();
+        // Xử lý an toàn tránh warning CS8602
+        if (ws.Dimension != null)
+        {
+            ws.Cells[ws.Dimension.Address].AutoFitColumns();
+        }
     }
 
     var bytes = await package.GetAsByteArrayAsync();
     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_PhongThi_VinhLong.xlsx");
 }).DisableAntiforgery();
+
 
 // --- API IMPORT EXCEL TRƯỜNG (CÓ CHECK MÔN THI SỞ CẤP) ---
 app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, HttpContext ctx) =>
