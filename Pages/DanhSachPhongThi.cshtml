@@ -10,6 +10,7 @@
         selectedPhong = listPhong[0];
     }
     var dsThiSinh = Db.ThiSinhs.Where(x => x.PhongThi == selectedPhong).OrderBy(x => x.SBD).ToList();
+    string monThi = dsThiSinh.FirstOrDefault()?.MonThi ?? ".....";
 }
 <!DOCTYPE html>
 <html lang="vi">
@@ -21,13 +22,14 @@
         @@media print {
             .no-print { display: none !important; }
             body { padding: 0 !important; background: white !important; }
-            .card { border: none !important; shadow: none !important; }
+            .card { border: none !important; box-shadow: none !important; }
         }
+        .header-title { font-family: "Times New Roman", Times, serif; }
     </style>
 </head>
 <body class="p-4 bg-light">
     <div class="container">
-        <!-- Thanh công cụ (Ẩn khi In) -->
+        <!-- BAR CÔNG CỤ (ẨN KHI IN) -->
         <div class="card p-3 mb-4 shadow-sm no-print">
             <div class="d-flex justify-content-between align-items-center">
                 <form method="get" class="d-flex gap-2 align-items-center">
@@ -40,22 +42,31 @@
                     </select>
                 </form>
                 <div>
-                    <button onclick="window.print()" class="btn btn-primary fw-bold me-2">🖨️ In / Tải PDF Phòng Bài</button>
-                    <a href="/api/so/export-phong-thi" class="btn btn-success fw-bold">📥 Tải Tất Cả Phòng (Excel)</a>
+                    <button onclick="window.print()" class="btn btn-primary fw-bold me-2">🖨️ In / Tải PDF A4</button>
+                    <a href="/api/so/export-phong-thi" class="btn btn-success fw-bold">📥 Tải Excel Các Phòng Thi</a>
                 </div>
             </div>
         </div>
 
-        <!-- Mẫu Bảng Điểm Danh Phòng Thi (Chuẩn khổ A4) -->
-        <div class="card p-4 shadow-sm bg-white">
-            <div class="text-center mb-4">
-                <h5 class="m-0 text-uppercase">SỞ GIÁO DỤC VÀ ĐÀO TẠO</h5>
-                <h3 class="fw-bold my-2">DANH SÁCH THÍ SINH DỰ THI HỌC SINH GIỎI</h3>
-                <h4 class="text-primary fw-bold">PHÒNG THI: @(selectedPhong ?? "CHƯA CHỌN PHÒNG")</h4>
+        <!-- KHUNG MẪU IN TỜ TỜ KHỔ A4 (CHUẨN MẪU SỞ GD&ĐT VĨNH LONG) -->
+        <div class="card p-5 shadow-sm bg-white header-title">
+            
+            <!-- HEADER THEO MẪU GIỐNG HÌNH -->
+            <div class="row mb-4">
+                <div class="col-6 text-center">
+                    <h6 class="fw-bold mb-1">SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG</h6>
+                    <h6 class="fw-bold mb-1">KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH</h6>
+                    <h6 class="fw-bold text-decoration-underline">Khóa ngày @DateTime.Now.ToString("dd/MM/yyyy")</h6>
+                </div>
+                <div class="col-6 text-center">
+                    <h5 class="fw-bold mb-2">DANH SÁCH PHÒNG THI SỐ: <span class="text-danger">@selectedPhong</span></h5>
+                    <h6 class="fw-bold">MÔN: <span class="text-uppercase text-primary">@monThi</span></h6>
+                </div>
             </div>
 
-            <table class="table table-bordered align-middle">
-                <thead class="table-light text-center">
+            <!-- BẢNG DANH SÁCH THÍ SINH -->
+            <table class="table table-bordered align-middle my-3 border-dark">
+                <thead class="text-center align-middle" style="background-color: #f2f2f2;">
                     <tr>
                         <th style="width: 50px;">STT</th>
                         <th style="width: 100px;">SBD</th>
@@ -78,11 +89,11 @@
                             var ts = dsThiSinh[i];
                             <tr>
                                 <td class="text-center">@(i + 1)</td>
-                                <td class="text-center fw-bold text-danger">@ts.SBD</td>
+                                <td class="text-center fw-bold">@ts.SBD</td>
                                 <td><b>@ts.HoTen</b></td>
                                 <td class="text-center">@ts.CCCD</td>
                                 <td>@ts.TenTruong</td>
-                                <td class="text-center"><span class="badge bg-primary">@ts.MonThi</span></td>
+                                <td class="text-center">@ts.MonThi</td>
                                 <td></td>
                             </tr>
                         }
@@ -90,14 +101,14 @@
                 </tbody>
             </table>
 
-            <div class="row mt-4 pt-3 no-print-break">
+            <!-- FOOTER CHỦ TỊCH HỘI ĐỒNG (CĂN PHẢI THEO MẪU HÌNH) -->
+            <div class="row mt-4 pt-3">
+                <div class="col-6"></div>
                 <div class="col-6 text-center">
-                    <p class="fw-bold mb-5">GIÁM THỊ 1<br><small class="fw-normal">(Ký và ghi rõ họ tên)</small></p>
-                </div>
-                <div class="col-6 text-center">
-                    <p class="fw-bold mb-5">GIÁM THỊ 2<br><small class="fw-normal">(Ký và ghi rõ họ tên)</small></p>
+                    <p class="fw-bold mb-5">CHỦ TỊCH HỘI ĐỒNG/BAN COI THI</p>
                 </div>
             </div>
+
         </div>
     </div>
 </body>
