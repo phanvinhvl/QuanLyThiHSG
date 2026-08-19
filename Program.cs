@@ -369,13 +369,6 @@ public class ChiaPhongRequest
     public int SoHocSinhMoiPhong { get; set; } = 24;
 }
 
-public class UpdateThiSinhReq
-{
-    public string HoTen { get; set; } = "";
-    public string CCCD { get; set; } = "";
-    public string MonThi { get; set; } = "";
-}
-
 public class TaiKhoan
 {
     public int Id { get; set; }
