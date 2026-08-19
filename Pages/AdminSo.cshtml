@@ -4,19 +4,8 @@
 @inject AppDbContext Db
 @{
     if (!User.IsInRole("So")) { Response.Redirect("/login"); return; }
-
-    if (HttpMethods.IsPost(Request.Method) && Request.Form["action"] == "themTruong")
-    {
-        var ma = Request.Form["maTruong"].ToString();
-        var ten = Request.Form["tenTruong"].ToString();
-        var pass = Request.Form["matKhau"].ToString();
-        if (!Db.TaiKhoans.Any(x => x.MaTruong == ma))
-        {
-            Db.TaiKhoans.Add(new TaiKhoan { MaTruong = ma, TenTruong = ten, MatKhau = pass, Role = "Truong" });
-            Db.SaveChanges();
-        }
-    }
     var danhSachTruong = Db.TaiKhoans.Where(x => x.Role == "Truong").ToList();
+    var danhSachMon = Db.DanhMucMonThis.OrderBy(x => x.TenMon).ToList();
     var tongThiSinh = Db.ThiSinhs.Count();
 }
 <!DOCTYPE html>
@@ -36,43 +25,45 @@
             </div>
         </div>
 
-        <div class="row mb-4">
-            <!-- Tạo thủ công 1 trường -->
-            <div class="col-md-6">
-                <div class="card p-3 shadow-sm h-100">
-                    <h5>Cấp Tài Khoản Mới (Thủ công)</h5>
-                    <form method="post" class="row g-2 mt-1">
-                        <input type="hidden" name="action" value="themTruong">
-                        <div class="col-md-4"><input type="text" name="maTruong" class="form-control" placeholder="Mã Trường" required></div>
-                        <div class="col-md-5"><input type="text" name="tenTruong" class="form-control" placeholder="Tên Trường" required></div>
-                        <div class="col-md-3"><input type="text" name="matKhau" class="form-control" placeholder="Mật khẩu" required></div>
-                        <button type="submit" class="btn btn-primary mt-2">Tạo Tài Khoản</button>
-                    </form>
+        <!-- QUẢN LÝ DANH MỤC MÔN THI -->
+        <div class="card p-3 mb-4 shadow-sm border-primary">
+            <h5 class="text-primary">📌 Quản Lý Danh Mục Môn Thi Quy Định</h5>
+            <div class="row g-3 align-items-center">
+                <div class="col-md-6 d-flex gap-2">
+                    <input type="text" id="txtTenMonMoi" class="form-control" placeholder="Nhập tên môn thi mới (ví dụ: GDCD)...">
+                    <button onclick="themMonThi()" class="btn btn-primary text-nowrap">Thêm Môn</button>
                 </div>
-            </div>
-
-            <!-- Import danh sách trường qua Excel -->
-            <div class="col-md-6">
-                <div class="card p-3 shadow-sm h-100">
-                    <h5>Import Danh Sách Trường từ Excel</h5>
-                    <p class="text-muted small mb-1">Định dạng file: <b>Cột A (Mã Trường), Cột B (Tên Trường), Cột C (Mật khẩu)</b></p>
-                    <form id="formImportTruong" class="d-flex gap-2">
-                        <input type="file" id="fileExcelTruong" accept=".xlsx" class="form-control" required>
-                        <button type="submit" id="btnImportTruong" class="btn btn-success text-nowrap">Import Excel</button>
-                    </form>
-                    <div id="statusImport" class="mt-2"></div>
+                <div class="col-md-12">
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        @foreach (var m in danhSachMon)
+                        {
+                            <span class="badge bg-secondary p-2 fs-6">
+                                @m.TenMon 
+                                <a href="javascript:void(0)" onclick="xoaMonThi(@m.Id, '@m.TenMon')" class="text-white ms-2 text-decoration-none">&times;</a>
+                            </span>
+                        }
+                    </div>
                 </div>
             </div>
         </div>
-<div>
-    <a href="/danhsachphongthi" class="btn btn-info fw-bold text-white me-2">📋 Xem & In Danh Sách Phòng Thi</a>
-    <button onclick="chiaPhongThi()" class="btn btn-warning fw-bold me-2">⚡ Chia Phòng & Đánh SBD</button>
-    <a href="/api/so/export-excel" class="btn btn-success fw-bold">📥 Tải File Excel Tổng Hợp (@tongThiSinh HS)</a>
-</div>
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm h-100">
+                    <h5>Import Danh Sách Trường từ Excel</h5>
+                    <p class="text-muted small mb-1">Cột A (Mã Trường), Cột B (Tên Trường), Cột C (Mật khẩu)</p>
+                    <form id="formImportTruong" class="d-flex gap-2">
+                        <input type="file" id="fileExcelTruong" accept=".xlsx" class="form-control" required>
+                        <button type="submit" class="btn btn-success text-nowrap">Import Excel</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <h5>Danh Sách Tài Khoản Các Trường (@danhSachTruong.Count trường)</h5>
         <table class="table table-bordered bg-white shadow-sm">
             <thead class="table-dark">
-                <tr><th>STT</th><th>Mã Trường</th><th>Tên Trường</th><th>Mật Khẩu Bàn Giao</th><th>Số HS Đã Đăng Ký</th></tr>
+                <tr><th>STT</th><th>Mã Trường</th><th>Tên Trường</th><th>Mật Khẩu</th><th>Số HS Đăng Ký</th></tr>
             </thead>
             <tbody>
                 @for (int i = 0; i < danhSachTruong.Count; i++)
@@ -92,53 +83,40 @@
     </div>
 
     <script>
-        // Import danh sách Trường
-        document.getElementById('formImportTruong').onsubmit = async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('btnImportTruong');
-            const fileInput = document.getElementById('fileExcelTruong');
-            const divStatus = document.getElementById('statusImport');
+        async function themMonThi() {
+            const tenMon = document.getElementById('txtTenMonMoi').value;
+            if(!tenMon) return alert("Vui lòng nhập tên môn thi!");
 
-            btn.disabled = true;
-            btn.innerText = 'Đang nhập...';
-            divStatus.innerHTML = '';
+            const res = await fetch('/api/so/them-mon', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tenMon })
+            });
+            const data = await res.json();
+            alert(data.message);
+            if(res.ok) location.reload();
+        }
 
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-
-            try {
-                const res = await fetch('/api/so/import-truong', { method: 'POST', body: formData });
-                const data = await res.json();
-                if (res.ok) {
-                    alert(data.message);
-                    location.reload();
-                } else {
-                    divStatus.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
-                    btn.disabled = false;
-                    btn.innerText = 'Import Excel';
-                }
-            } catch {
-                divStatus.innerHTML = `<div class="alert alert-danger">Lỗi máy chủ!</div>`;
-                btn.disabled = false;
-                btn.innerText = 'Import Excel';
-            }
-        };
-
-        // Chia phòng thi & Đánh SBD
-        async function chiaPhongThi() {
-            const hsPerPhong = prompt("Nhập số lượng thí sinh tối đa trong 1 phòng thi:", "24");
-            if (!hsPerPhong) return;
-
-            if (confirm(`Bạn có chắc muốn tự động đánh SBD và chia phòng thi (${hsPerPhong} HS/phòng)?`)) {
-                const res = await fetch('/api/so/chia-phong', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ soHocSinhMoiPhong: parseInt(hsPerPhong) })
-                });
+        async function xoaMonThi(id, tenMon) {
+            if(confirm(`Xóa môn '${tenMon}' khỏi danh mục?`)) {
+                const res = await fetch(`/api/so/xoa-mon/${id}`, { method: 'DELETE' });
                 const data = await res.json();
                 alert(data.message);
-                location.reload();
+                if(res.ok) location.reload();
             }
+        }
+
+        async function chiaPhongThi() {
+            const hsPerPhong = prompt("Nhập số lượng HS tối đa trong 1 phòng thi:", "24");
+            if (!hsPerPhong) return;
+            const res = await fetch('/api/so/chia-phong', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ soHocSinhMoiPhong: parseInt(hsPerPhong) })
+            });
+            const data = await res.json();
+            alert(data.message);
+            location.reload();
         }
     </script>
 </body>
