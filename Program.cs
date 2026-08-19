@@ -86,6 +86,35 @@ app.MapPost("/api/so/them-mon", async (AppDbContext db, HttpContext ctx, DanhMuc
     return Results.Ok(new { message = "Đã thêm môn thi mới!" });
 }).DisableAntiforgery();
 
+// --- API SỬA TÊN MÔN THI (SỞ) ---
+app.MapPut("/api/so/sua-mon/{id}", async (int id, AppDbContext db, HttpContext ctx, DanhMucMonThi req) =>
+{
+    if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
+    if (string.IsNullOrWhiteSpace(req.TenMon)) return Results.BadRequest(new { message = "Tên môn không được để trống!" });
+
+    var item = await db.DanhMucMonThis.FindAsync(id);
+    if (item == null) return Results.NotFound(new { message = "Không tìm thấy môn thi!" });
+
+    var tenMonClean = req.TenMon.Trim();
+    
+    // Kiểm tra trùng tên với môn khác
+    if (await db.DanhMucMonThis.AnyAsync(x => x.Id != id && x.TenMon.ToLower() == tenMonClean.ToLower()))
+        return Results.BadRequest(new { message = "Tên môn thi này đã tồn tại!" });
+
+    string tenMonCu = item.TenMon;
+    item.TenMon = tenMonClean;
+
+    // Tự động cập nhật lại tên môn mới cho toàn bộ thí sinh đã đăng ký môn cũ
+    var listThiSinh = await db.ThiSinhs.Where(x => x.MonThi == tenMonCu).ToListAsync();
+    foreach (var ts in listThiSinh)
+    {
+        ts.MonThi = tenMonClean;
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = $"Đã đổi tên môn từ '{tenMonCu}' thành '{tenMonClean}'!" });
+}).DisableAntiforgery();
+
 app.MapDelete("/api/so/xoa-mon/{id}", async (int id, AppDbContext db, HttpContext ctx) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
