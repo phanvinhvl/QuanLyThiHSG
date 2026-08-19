@@ -3,7 +3,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @{
-    if (!User.IsInRole("So")) { Response.Redirect("/Login"); return; }
+    if (!User.IsInRole("So")) { Response.Redirect("/login"); return; }
 
     if (HttpMethods.IsPost(Request.Method) && Request.Form["action"] == "themTruong")
     {
@@ -30,22 +30,43 @@
     <div class="container">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>TRANG QUẢN TRỊ SỞ GIÁO DỤC</h2>
-            <a href="/api/so/export-excel" class="btn btn-success fw-bold">📥 Tải File Excel Toàn Tỉnh (@tongThiSinh Thí sinh)</a>
+            <div>
+                <button onclick="chiaPhongThi()" class="btn btn-warning fw-bold me-2">⚡ Chia Phòng & Đánh SBD</button>
+                <a href="/api/so/export-excel" class="btn btn-success fw-bold">📥 Tải File Excel Tổng Hợp (@tongThiSinh HS)</a>
+            </div>
         </div>
 
-        <div class="card p-3 mb-4 shadow-sm">
-            <h5>Cấp Tài Khoản Mới Cho Trường</h5>
-            <form method="post" class="row g-2">
-                <input type="hidden" name="action" value="themTruong">
-                <div class="col-md-3"><input type="text" name="maTruong" class="form-control" placeholder="Mã Trường (viết liền)" required></div>
-                <div class="col-md-4"><input type="text" name="tenTruong" class="form-control" placeholder="Tên Trường THPT/THCS" required></div>
-                <div class="col-md-3"><input type="text" name="matKhau" class="form-control" placeholder="Mật khẩu bàn giao" required></div>
-                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Tạo Tài Khoản</button></div>
-            </form>
+        <div class="row mb-4">
+            <!-- Tạo thủ công 1 trường -->
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm h-100">
+                    <h5>Cấp Tài Khoản Mới (Thủ công)</h5>
+                    <form method="post" class="row g-2 mt-1">
+                        <input type="hidden" name="action" value="themTruong">
+                        <div class="col-md-4"><input type="text" name="maTruong" class="form-control" placeholder="Mã Trường" required></div>
+                        <div class="col-md-5"><input type="text" name="tenTruong" class="form-control" placeholder="Tên Trường" required></div>
+                        <div class="col-md-3"><input type="text" name="matKhau" class="form-control" placeholder="Mật khẩu" required></div>
+                        <button type="submit" class="btn btn-primary mt-2">Tạo Tài Khoản</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Import danh sách trường qua Excel -->
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm h-100">
+                    <h5>Import Danh Sách Trường từ Excel</h5>
+                    <p class="text-muted small mb-1">Định dạng file: <b>Cột A (Mã Trường), Cột B (Tên Trường), Cột C (Mật khẩu)</b></p>
+                    <form id="formImportTruong" class="d-flex gap-2">
+                        <input type="file" id="fileExcelTruong" accept=".xlsx" class="form-control" required>
+                        <button type="submit" id="btnImportTruong" class="btn btn-success text-nowrap">Import Excel</button>
+                    </form>
+                    <div id="statusImport" class="mt-2"></div>
+                </div>
+            </div>
         </div>
 
-        <h5>Danh Sách Tài Khoản Các Trường</h5>
-        <table class="table table-bordered bg-white">
+        <h5>Danh Sách Tài Khoản Các Trường (@danhSachTruong.Count trường)</h5>
+        <table class="table table-bordered bg-white shadow-sm">
             <thead class="table-dark">
                 <tr><th>STT</th><th>Mã Trường</th><th>Tên Trường</th><th>Mật Khẩu Bàn Giao</th><th>Số HS Đã Đăng Ký</th></tr>
             </thead>
@@ -65,5 +86,56 @@
             </tbody>
         </table>
     </div>
+
+    <script>
+        // Import danh sách Trường
+        document.getElementById('formImportTruong').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btnImportTruong');
+            const fileInput = document.getElementById('fileExcelTruong');
+            const divStatus = document.getElementById('statusImport');
+
+            btn.disabled = true;
+            btn.innerText = 'Đang nhập...';
+            divStatus.innerHTML = '';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const res = await fetch('/api/so/import-truong', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    divStatus.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                    btn.disabled = false;
+                    btn.innerText = 'Import Excel';
+                }
+            } catch {
+                divStatus.innerHTML = `<div class="alert alert-danger">Lỗi máy chủ!</div>`;
+                btn.disabled = false;
+                btn.innerText = 'Import Excel';
+            }
+        };
+
+        // Chia phòng thi & Đánh SBD
+        async function chiaPhongThi() {
+            const hsPerPhong = prompt("Nhập số lượng thí sinh tối đa trong 1 phòng thi:", "24");
+            if (!hsPerPhong) return;
+
+            if (confirm(`Bạn có chắc muốn tự động đánh SBD và chia phòng thi (${hsPerPhong} HS/phòng)?`)) {
+                const res = await fetch('/api/so/chia-phong', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ soHocSinhMoiPhong: parseInt(hsPerPhong) })
+                });
+                const data = await res.json();
+                alert(data.message);
+                location.reload();
+            }
+        }
+    </script>
 </body>
 </html>
