@@ -271,6 +271,75 @@ app.MapDelete("/api/truong/xoa-thisinh/{id}", async (int id, AppDbContext db, Ht
 
     return Results.Ok(new { message = "Đã xóa học sinh!" });
 }).DisableAntiforgery();
+// --- API XUẤT FILE EXCEL DANH SÁCH PHÒNG THI (MỖI PHÒNG 1 SHEET) ---
+app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) =>
+{
+    var listPhong = await db.ThiSinhs
+        .Where(x => !string.IsNullOrEmpty(x.PhongThi))
+        .Select(x => x.PhongThi)
+        .Distinct()
+        .OrderBy(x => x)
+        .ToListAsync();
+
+    if (listPhong.Count == 0) 
+        return Results.BadRequest(new { message = "Chưa có dữ liệu phòng thi! Vui lòng thực hiện Chia Phòng Thi trước." });
+
+    using var package = new ExcelPackage();
+
+    foreach (var phong in listPhong)
+    {
+        // Tên Sheet khống chế tối đa 31 ký tự theo chuẩn Excel
+        string sheetName = phong.Replace("/", "-").Replace(":", "-");
+        if (sheetName.Length > 30) sheetName = sheetName.Substring(0, 30);
+
+        var ws = package.Workbook.Worksheets.Add(sheetName);
+
+        // Tiêu đề Trang
+        ws.Cells[1, 1, 1, 7].Merge = true;
+        ws.Cells[1, 1].Value = $"DANH SÁCH THÍ SINH DỰ THI - PHÒNG THI: {phong}";
+        ws.Cells[1, 1].Style.Font.Bold = true;
+        ws.Cells[1, 1].Style.Font.Size = 14;
+        ws.Cells[1, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+
+        // Tiêu đề Bảng
+        ws.Cells[3, 1].Value = "STT";
+        ws.Cells[3, 2].Value = "SBD";
+        ws.Cells[3, 3].Value = "Họ và Tên";
+        ws.Cells[3, 4].Value = "Số CCCD/Định danh";
+        ws.Cells[3, 5].Value = "Trường THPT/THCS";
+        ws.Cells[3, 6].Value = "Môn Thi";
+        ws.Cells[3, 7].Value = "Chữ ký thí sinh";
+
+        using (var range = ws.Cells[3, 1, 3, 7])
+        {
+            range.Style.Font.Bold = true;
+            range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+            range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+        }
+
+        var thiSinhs = await db.ThiSinhs
+            .Where(x => x.PhongThi == phong)
+            .OrderBy(x => x.SBD)
+            .ToListAsync();
+
+        for (int i = 0; i < thiSinhs.Count; i++)
+        {
+            int row = i + 4;
+            ws.Cells[row, 1].Value = i + 1;
+            ws.Cells[row, 2].Value = thiSinhs[i].SBD;
+            ws.Cells[row, 3].Value = thiSinhs[i].HoTen;
+            ws.Cells[row, 4].Value = thiSinhs[i].CCCD;
+            ws.Cells[row, 5].Value = thiSinhs[i].TenTruong;
+            ws.Cells[row, 6].Value = thiSinhs[i].MonThi;
+            ws.Cells[row, 7].Value = ""; // Ô ký tên
+        }
+
+        ws.Cells[ws.Dimension.Address].AutoFitColumns();
+    }
+
+    var bytes = await package.GetAsByteArrayAsync();
+    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_TheoPhongThi.xlsx");
+}).DisableAntiforgery();
 
 app.Run();
 
