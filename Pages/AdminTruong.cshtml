@@ -32,7 +32,7 @@
             <div id="statusUpload" class="mt-2"></div>
         </div>
 
-        <h5>Danh Sách Học Sinh Đã Đăng Ký (@danhSach.Count em)</h5>
+        <h5>Danh sách học sinh đã đăng ký (@danhSach.Count học sinh)</h5>
         <table class="table table-striped table-bordered bg-white shadow-sm align-middle">
             <thead class="table-dark">
                 <tr>
@@ -40,7 +40,7 @@
                     <th>SBD</th>
                     <th>Phòng Thi</th>
                     <th>Họ và Tên</th>
-                    <th>Số CCCD/Định Danh</th>
+                    <th>Số CCCD/Mã Định Danh</th>
                     <th>Tên Trường</th>
                     <th>Môn Dự Thi</th>
                     <th class="text-center" style="width: 150px;">Thao Tác</th>
@@ -73,25 +73,25 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title">Chỉnh Sửa Thông Tin Học Sinh</h5>
+                    <h5 class="modal-title">Chỉnh sửa thông tin học sinh</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="editId">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Họ và Tên</label>
+                        <label class="form-label fw-bold">Họ và tên</label>
                         <input type="text" id="editHoTen" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Số CCCD/Định Danh</label>
+                        <label class="form-label fw-bold">Số CCCD/Mã Định Danh</label>
                         <input type="text" id="editCCCD" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Tên Trường</label>
+                        <label class="form-label fw-bold">Tên trường</label>
                         <input type="text" id="editTenTruong" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Môn Thi (Chỉ chọn môn quy định)</label>
+                        <label class="form-label fw-bold">Môn thi (Chỉ chọn môn quy định)</label>
                         <select id="editMonThi" class="form-select">
                             @foreach (var m in danhSachMon)
                             {
