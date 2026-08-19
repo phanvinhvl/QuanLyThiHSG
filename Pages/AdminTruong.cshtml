@@ -40,6 +40,7 @@
                     <th>Phòng Thi</th>
                     <th>Họ và Tên</th>
                     <th>Số CCCD/Định Danh</th>
+                    <th>Tên Trường</th>
                     <th>Môn Dự Thi</th>
                     <th class="text-center" style="width: 150px;">Thao Tác</th>
                 </tr>
@@ -54,9 +55,10 @@
                         <td><span class="badge bg-secondary">@(item.PhongThi ?? "---")</span></td>
                         <td><span id="name-@item.Id">@item.HoTen</span></td>
                         <td><span id="cccd-@item.Id">@item.CCCD</span></td>
+                        <td><span id="truong-@item.Id">@item.TenTruong</span></td>
                         <td><span class="badge bg-primary" id="mon-@item.Id">@item.MonThi</span></td>
                         <td class="text-center">
-                            <button onclick="suaThiSinh(@item.Id)" class="btn btn-sm btn-warning">Sửa</button>
+                            <button onclick="moModalSua(@item.Id)" class="btn btn-sm btn-warning">Sửa</button>
                             <button onclick="xoaThiSinh(@item.Id)" class="btn btn-sm btn-danger">Xóa</button>
                         </td>
                     </tr>
@@ -65,7 +67,99 @@
         </table>
     </div>
 
+    <!-- MODAL SỬA THÔNG TIN HỌC SINH -->
+    <div class="modal fade" id="modalEdit" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Chỉnh Sửa Thông Tin Học Sinh</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editId">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Họ và Tên</label>
+                        <input type="text" id="editHoTen" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Số CCCD/Định Danh</label>
+                        <input type="text" id="editCCCD" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tên Trường</label>
+                        <input type="text" id="editTenTruong" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Môn Thi Dự Thi</label>
+                        <input type="text" id="editMonThi" class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" onclick="luuThongTinSua()" class="btn btn-primary">Lưu Thay Đổi</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let editModalBS;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            editModalBS = new bootstrap.Modal(document.getElementById('modalEdit'));
+        });
+
+        // Mở Modal điền sẵn toàn bộ thông tin hiện tại
+        function moModalSua(id) {
+            document.getElementById('editId').value = id;
+            document.getElementById('editHoTen').value = document.getElementById(`name-${id}`).innerText;
+            document.getElementById('editCCCD').value = document.getElementById(`cccd-${id}`).innerText;
+            document.getElementById('editTenTruong').value = document.getElementById(`truong-${id}`).innerText;
+            document.getElementById('editMonThi').value = document.getElementById(`mon-${id}`).innerText;
+
+            editModalBS.show();
+        }
+
+        // Gọi API Lưu thông tin đã sửa
+        async function luuThongTinSua() {
+            const id = document.getElementById('editId').value;
+            const payload = {
+                hoTen: document.getElementById('editHoTen').value,
+                cccd: document.getElementById('editCCCD').value,
+                tenTruong: document.getElementById('editTenTruong').value,
+                monThi: document.getElementById('editMonThi').value
+            };
+
+            const res = await fetch(`/api/truong/sua-thisinh/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert(data.message || 'Có lỗi xảy ra!');
+            }
+        }
+
+        // Xóa thí sinh
+        async function xoaThiSinh(id) {
+            if (confirm("Bạn có chắc chắn muốn xóa học sinh này khỏi danh sách?")) {
+                const res = await fetch(`/api/truong/xoa-thisinh/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert(data.message);
+                }
+            }
+        }
+
         // Upload File Excel
         document.getElementById('formUpload').onsubmit = async (e) => {
             e.preventDefault();
@@ -97,48 +191,6 @@
                 btn.innerText = 'Upload File Excel';
             }
         };
-
-        // Sửa thông tin thí sinh
-        async function suaThiSinh(id) {
-            const currentName = document.getElementById(`name-${id}`).innerText;
-            const currentCCCD = document.getElementById(`cccd-${id}`).innerText;
-            const currentMon = document.getElementById(`mon-${id}`).innerText;
-
-            const hoTen = prompt("Sửa Họ và Tên:", currentName);
-            if (!hoTen) return;
-            const cccd = prompt("Sửa Số CCCD:", currentCCCD);
-            if (!cccd) return;
-            const monThi = prompt("Sửa Môn Thi:", currentMon);
-            if (!monThi) return;
-
-            const res = await fetch(`/api/truong/sua-thisinh/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hoTen, cccd, monThi })
-            });
-
-            const data = await res.json();
-            if (res.ok) {
-                alert(data.message);
-                location.reload();
-            } else {
-                alert(data.message);
-            }
-        }
-
-        // Xóa thí sinh
-        async function xoaThiSinh(id) {
-            if (confirm("Bạn có chắc chắn muốn xóa học sinh này khỏi danh sách?")) {
-                const res = await fetch(`/api/truong/xoa-thisinh/${id}`, { method: 'DELETE' });
-                const data = await res.json();
-                if (res.ok) {
-                    alert(data.message);
-                    location.reload();
-                } else {
-                    alert(data.message);
-                }
-            }
-        }
     </script>
 </body>
 </html>
