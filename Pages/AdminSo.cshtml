@@ -12,77 +12,165 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Quản Trị Cấp Sở</title>
+    <title>Quản Trị Cấp Sở - Hệ Thống Thi HSG</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 </head>
 <body class="p-4 bg-light">
-    <div class="container">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>TRANG QUẢN TRỊ SỞ GIÁO DỤC</h2>
+    <div class="container-fluid" style="max-width: 1200px;">
+        <!-- HEADER TRANG -->
+        <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white rounded shadow-sm">
             <div>
+                <h3 class="fw-bold text-primary mb-1">TRANG QUẢN TRỊ SỞ GIÁO DỤC</h3>
+                <span class="text-muted small">Tổng số học sinh đã đăng ký: <b>@tongThiSinh</b> thí sinh</span>
+            </div>
+            <div>
+                <a href="/danhsachphongthi" class="btn btn-outline-info fw-bold me-2">📋 Xem & In Phòng Thi</a>
                 <button onclick="chiaPhongThi()" class="btn btn-warning fw-bold me-2">⚡ Chia Phòng & Đánh SBD</button>
-                <a href="/api/so/export-excel" class="btn btn-success fw-bold">📥 Tải File Excel Tổng Hợp (@tongThiSinh HS)</a>
+                <a href="/api/so/export-excel" class="btn btn-success fw-bold">📥 Tải File Excel Tổng Hợp</a>
             </div>
         </div>
 
-        <!-- QUẢN LÝ DANH MỤC MÔN THI -->
-        <div class="card p-3 mb-4 shadow-sm border-primary">
-            <h5 class="text-primary">📌 Quản Lý Danh Mục Môn Thi Quy Định</h5>
-            <div class="row g-3 align-items-center">
-                <div class="col-md-6 d-flex gap-2">
-                    <input type="text" id="txtTenMonMoi" class="form-control" placeholder="Nhập tên môn thi mới (ví dụ: GDCD)...">
-                    <button onclick="themMonThi()" class="btn btn-primary text-nowrap">Thêm Môn</button>
+        <div class="row g-4 mb-4">
+            <!-- BẢNG 1: QUẢN LÝ DANH MỤC MÔN THI QUY ĐỊNH -->
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3">
+                        <h5 class="card-title m-0 fs-6 fw-bold">📌 DANH MỤC MÔN THI QUY ĐỊNH (@danhSachMon.Count môn)</h5>
+                        <button class="btn btn-light btn-sm fw-bold text-primary" data-bs-toggle="modal" data-bs-target="#modalThemMon">+ Thêm Môn</button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                            <table class="table table-hover table-striped align-middle m-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th class="text-center" style="width: 60px;">STT</th>
+                                        <th>Tên Môn Thi</th>
+                                        <th class="text-center" style="width: 100px;">Thao Tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (danhSachMon.Count == 0)
+                                    {
+                                        <tr><td colspan="3" class="text-center text-muted py-3">Chưa có môn thi nào trong danh mục.</td></tr>
+                                    }
+                                    else
+                                    {
+                                        @for (int i = 0; i < danhSachMon.Count; i++)
+                                        {
+                                            var m = danhSachMon[i];
+                                            <tr>
+                                                <td class="text-center text-muted">@(i + 1)</td>
+                                                <td><span class="fw-bold text-dark">@m.TenMon</span></td>
+                                                <td class="text-center">
+                                                    <button onclick="xoaMonThi(@m.Id, '@m.TenMon')" class="btn btn-outline-danger btn-sm px-2 py-0">Xóa</button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-12">
-                    <div class="d-flex flex-wrap gap-2 mt-2">
-                        @foreach (var m in danhSachMon)
-                        {
-                            <span class="badge bg-secondary p-2 fs-6">
-                                @m.TenMon 
-                                <a href="javascript:void(0)" onclick="xoaMonThi(@m.Id, '@m.TenMon')" class="text-white ms-2 text-decoration-none">&times;</a>
-                            </span>
-                        }
+            </div>
+
+            <!-- BẢNG 2: IMPORT TÀI KHOẢN TRƯỜNG BẰNG EXCEL -->
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-success text-white py-3">
+                        <h5 class="card-title m-0 fs-6 fw-bold">📂 IMPORT TÀI KHOẢN TRƯỜNG TỪ EXCEL</h5>
+                    </div>
+                    <div class="card-body d-flex flex-column justify-content-between">
+                        <div>
+                            <p class="text-muted small mb-2">Định dạng file Excel hỗ trợ: <b>Cột A (Mã Trường), Cột B (Tên Trường), Cột C (Mật Khẩu Bàn Giao)</b>.</p>
+                            <form id="formImportTruong" class="mb-3">
+                                <div class="mb-3">
+                                    <input type="file" id="fileExcelTruong" accept=".xlsx" class="form-control" required>
+                                </div>
+                                <button type="submit" id="btnImportTruong" class="btn btn-success w-100 fw-bold">Tải Lên File Excel Trường</button>
+                            </form>
+                            <div id="statusImport"></div>
+                        </div>
+                        <div class="alert alert-info mb-0 small">
+                            💡 <b>Lưu ý:</b> Hệ thống sẽ tự động bỏ qua nếu Mã Trường đã tồn tại trong danh mục tài khoản.
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="card p-3 shadow-sm h-100">
-                    <h5>Import Danh Sách Trường từ Excel</h5>
-                    <p class="text-muted small mb-1">Cột A (Mã Trường), Cột B (Tên Trường), Cột C (Mật khẩu)</p>
-                    <form id="formImportTruong" class="d-flex gap-2">
-                        <input type="file" id="fileExcelTruong" accept=".xlsx" class="form-control" required>
-                        <button type="submit" class="btn btn-success text-nowrap">Import Excel</button>
-                    </form>
+        <!-- BẢNG 3: DANH SÁCH TÀI KHOẢN CÁC TRƯỜNG -->
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">
+                <h5 class="card-title m-0 fs-6 fw-bold">🏫 DANH SÁCH TÀI KHOẢN CÁC TRƯỜNG (@danhSachTruong.Count trường)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped align-middle m-0">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th class="text-center" style="width: 60px;">STT</th>
+                                <th style="width: 180px;">Mã Trường</th>
+                                <th>Tên Trường THPT / THCS</th>
+                                <th style="width: 180px;">Mật Khẩu Bàn Giao</th>
+                                <th class="text-center" style="width: 180px;">Số HS Đã Đăng Ký</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (danhSachTruong.Count == 0)
+                            {
+                                <tr><td colspan="5" class="text-center text-muted py-3">Chưa có tài khoản trường nào được khởi tạo.</td></tr>
+                            }
+                            else
+                            {
+                                @for (int i = 0; i < danhSachTruong.Count; i++)
+                                {
+                                    var tr = danhSachTruong[i];
+                                    var count = Db.ThiSinhs.Count(x => x.MaTruong == tr.MaTruong);
+                                    <tr>
+                                        <td class="text-center text-muted">@(i + 1)</td>
+                                        <td><code class="fw-bold fs-6">@tr.MaTruong</code></td>
+                                        <td><span class="fw-bold text-dark">@tr.TenTruong</span></td>
+                                        <td><span class="badge bg-light text-dark border">@tr.MatKhau</span></td>
+                                        <td class="text-center">
+                                            <span class="badge bg-primary rounded-pill px-3 py-2">@count học sinh</span>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
-
-        <h5>Danh Sách Tài Khoản Các Trường (@danhSachTruong.Count trường)</h5>
-        <table class="table table-bordered bg-white shadow-sm">
-            <thead class="table-dark">
-                <tr><th>STT</th><th>Mã Trường</th><th>Tên Trường</th><th>Mật Khẩu</th><th>Số HS Đăng Ký</th></tr>
-            </thead>
-            <tbody>
-                @for (int i = 0; i < danhSachTruong.Count; i++)
-                {
-                    var tr = danhSachTruong[i];
-                    var count = Db.ThiSinhs.Count(x => x.MaTruong == tr.MaTruong);
-                    <tr>
-                        <td>@(i + 1)</td>
-                        <td><b>@tr.MaTruong</b></td>
-                        <td>@tr.TenTruong</td>
-                        <td><code>@tr.MatKhau</code></td>
-                        <td><span class="badge bg-info text-dark">@count HS</span></td>
-                    </tr>
-                }
-            </tbody>
-        </table>
     </div>
 
+    <!-- MODAL THÊM MÔN THI MỚI -->
+    <div class="modal fade" id="modalThemMon" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fs-6 fw-bold">Thêm Môn Thi Mới Vào Danh Mục</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tên Môn Thi</label>
+                        <input type="text" id="txtTenMonMoi" class="form-control" placeholder="Ví dụ: Giáo Dục Công Dân">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" onclick="themMonThi()" class="btn btn-primary">Xác Nhận Thêm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Thêm môn thi mới
         async function themMonThi() {
             const tenMon = document.getElementById('txtTenMonMoi').value;
             if(!tenMon) return alert("Vui lòng nhập tên môn thi!");
@@ -97,8 +185,9 @@
             if(res.ok) location.reload();
         }
 
+        // Xóa môn thi
         async function xoaMonThi(id, tenMon) {
-            if(confirm(`Xóa môn '${tenMon}' khỏi danh mục?`)) {
+            if(confirm(`Bạn có chắc chắn muốn xóa môn '${tenMon}' khỏi danh mục?`)) {
                 const res = await fetch(`/api/so/xoa-mon/${id}`, { method: 'DELETE' });
                 const data = await res.json();
                 alert(data.message);
@@ -106,17 +195,53 @@
             }
         }
 
+        // Import trường qua Excel
+        document.getElementById('formImportTruong').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btnImportTruong');
+            const fileInput = document.getElementById('fileExcelTruong');
+            const divStatus = document.getElementById('statusImport');
+
+            btn.disabled = true;
+            btn.innerText = 'Đang xử lý tải lên...';
+            divStatus.innerHTML = '';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const res = await fetch('/api/so/import-truong', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    divStatus.innerHTML = `<div class="alert alert-danger mb-0">${data.message}</div>`;
+                    btn.disabled = false;
+                    btn.innerText = 'Tải Lên File Excel Trường';
+                }
+            } catch {
+                divStatus.innerHTML = `<div class="alert alert-danger mb-0">Lỗi máy chủ!</div>`;
+                btn.disabled = false;
+                btn.innerText = 'Tải Lên File Excel Trường';
+            }
+        };
+
+        // Tự động đánh SBD & Chia phòng thi
         async function chiaPhongThi() {
-            const hsPerPhong = prompt("Nhập số lượng HS tối đa trong 1 phòng thi:", "24");
+            const hsPerPhong = prompt("Nhập số lượng học sinh tối đa trong 1 phòng thi:", "24");
             if (!hsPerPhong) return;
-            const res = await fetch('/api/so/chia-phong', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ soHocSinhMoiPhong: parseInt(hsPerPhong) })
-            });
-            const data = await res.json();
-            alert(data.message);
-            location.reload();
+
+            if (confirm(`Xác nhận đánh SBD và chia phòng thi với quy mô ${hsPerPhong} HS/phòng?`)) {
+                const res = await fetch('/api/so/chia-phong', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ soHocSinhMoiPhong: parseInt(hsPerPhong) })
+                });
+                const data = await res.json();
+                alert(data.message);
+                location.reload();
+            }
         }
     </script>
 </body>
