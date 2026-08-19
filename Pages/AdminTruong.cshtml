@@ -6,6 +6,7 @@
     if (!User.IsInRole("Truong")) { Response.Redirect("/login"); return; }
     var maTruong = User.Identity?.Name;
     var danhSach = Db.ThiSinhs.Where(x => x.MaTruong == maTruong).OrderBy(x => x.HoTen).ToList();
+    var danhSachMon = Db.DanhMucMonThis.OrderBy(x => x.TenMon).ToList();
 }
 <!DOCTYPE html>
 <html lang="vi">
@@ -23,7 +24,7 @@
         
         <div class="card p-3 mb-4 shadow-sm">
             <h5>Upload Danh Sách Học Sinh Qua Excel</h5>
-            <p class="text-muted small mb-2">Cấu trúc file Excel mẫu: <b>Cột A (Họ Tên), Cột B (Số CCCD), Cột C (Môn Thi)</b>.</p>
+            <p class="text-muted small mb-2">Chỉ các môn nằm trong Danh mục của Sở mới được duyệt tự động.</p>
             <form id="formUpload" class="d-flex gap-2">
                 <input type="file" id="fileExcel" accept=".xlsx" class="form-control" style="max-width: 400px;" required>
                 <button type="submit" id="btnUpload" class="btn btn-success">Upload File Excel</button>
@@ -67,13 +68,13 @@
         </table>
     </div>
 
-    <!-- MODAL SỬA THÔNG TIN HỌC SINH -->
+    <!-- MODAL SỬA THÔNG TIN -->
     <div class="modal fade" id="modalEdit" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title">Chỉnh Sửa Thông Tin Học Sinh</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="editId">
@@ -90,8 +91,13 @@
                         <input type="text" id="editTenTruong" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Môn Thi Dự Thi</label>
-                        <input type="text" id="editMonThi" class="form-control" required>
+                        <label class="form-label fw-bold">Môn Thi (Chỉ chọn môn quy định)</label>
+                        <select id="editMonThi" class="form-select">
+                            @foreach (var m in danhSachMon)
+                            {
+                                <option value="@m.TenMon">@m.TenMon</option>
+                            }
+                        </select>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -105,23 +111,19 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let editModalBS;
-
         document.addEventListener("DOMContentLoaded", () => {
             editModalBS = new bootstrap.Modal(document.getElementById('modalEdit'));
         });
 
-        // Mở Modal điền sẵn toàn bộ thông tin hiện tại
         function moModalSua(id) {
             document.getElementById('editId').value = id;
             document.getElementById('editHoTen').value = document.getElementById(`name-${id}`).innerText;
             document.getElementById('editCCCD').value = document.getElementById(`cccd-${id}`).innerText;
             document.getElementById('editTenTruong').value = document.getElementById(`truong-${id}`).innerText;
             document.getElementById('editMonThi').value = document.getElementById(`mon-${id}`).innerText;
-
             editModalBS.show();
         }
 
-        // Gọi API Lưu thông tin đã sửa
         async function luuThongTinSua() {
             const id = document.getElementById('editId').value;
             const payload = {
@@ -142,53 +144,36 @@
                 alert(data.message);
                 location.reload();
             } else {
-                alert(data.message || 'Có lỗi xảy ra!');
+                alert(data.message || 'Lỗi chọn môn!');
             }
         }
 
-        // Xóa thí sinh
         async function xoaThiSinh(id) {
-            if (confirm("Bạn có chắc chắn muốn xóa học sinh này khỏi danh sách?")) {
+            if (confirm("Xóa học sinh này?")) {
                 const res = await fetch(`/api/truong/xoa-thisinh/${id}`, { method: 'DELETE' });
                 const data = await res.json();
-                if (res.ok) {
-                    alert(data.message);
-                    location.reload();
-                } else {
-                    alert(data.message);
-                }
+                if (res.ok) location.reload();
             }
         }
 
-        // Upload File Excel
         document.getElementById('formUpload').onsubmit = async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btnUpload');
             const statusDiv = document.getElementById('statusUpload');
             const fileInput = document.getElementById('fileExcel');
 
-            btn.disabled = true;
-            btn.innerText = 'Đang tải lên...';
-            statusDiv.innerHTML = '';
-
+            btn.disabled = true; btn.innerText = 'Đang tải lên...';
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
             try {
                 const res = await fetch('/api/truong/upload-excel', { method: 'POST', body: formData });
                 const data = await res.json();
-                if (res.ok) {
-                    alert(data.message);
-                    location.reload();
-                } else {
-                    statusDiv.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
-                    btn.disabled = false;
-                    btn.innerText = 'Upload File Excel';
-                }
+                alert(data.message);
+                location.reload();
             } catch {
-                statusDiv.innerHTML = `<div class="alert alert-danger">Lỗi kết nối máy chủ!</div>`;
-                btn.disabled = false;
-                btn.innerText = 'Upload File Excel';
+                statusDiv.innerHTML = `<div class="alert alert-danger">Lỗi kết nối!</div>`;
+                btn.disabled = false; btn.innerText = 'Upload File Excel';
             }
         };
     </script>
