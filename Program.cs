@@ -126,7 +126,7 @@ app.MapDelete("/api/so/xoa-mon/{id}", async (int id, AppDbContext db, HttpContex
     return Results.Ok(new { message = "Đã xóa môn thi!" });
 }).DisableAntiforgery();
 
-// --- API XUẤT FILE EXCEL DANH SÁCH PHÒNG THI CHUẨN MẪU VĨNH LONG ---
+// --- API XUẤT FILE EXCEL DANH SÁCH PHÒNG THI (5 CỘT THEO MẪU A4) ---
 app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) =>
 {
     var listPhong = await db.ThiSinhs
@@ -150,49 +150,45 @@ app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) 
 
         var ws = package.Workbook.Worksheets.Add(sheetName);
 
-        // Lấy thông tin môn thi của phòng
         var sampleTS = await db.ThiSinhs.FirstOrDefaultAsync(x => x.PhongThi == phong);
         string monThi = sampleTS?.MonThi ?? "";
 
-        // --- TIÊU ĐỀ ĐẦU TRANG (HEADER) ---
-        // Bên trái
-        ws.Cells[1, 1, 1, 4].Merge = true;
+        // Header Bên trái
+        ws.Cells[1, 1, 1, 3].Merge = true;
         ws.Cells[1, 1].Value = "SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG";
         ws.Cells[1, 1].Style.Font.Bold = true;
         ws.Cells[1, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 
-        ws.Cells[2, 1, 2, 4].Merge = true;
+        ws.Cells[2, 1, 2, 3].Merge = true;
         ws.Cells[2, 1].Value = "KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH";
         ws.Cells[2, 1].Style.Font.Bold = true;
         ws.Cells[2, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 
-        ws.Cells[3, 1, 3, 4].Merge = true;
+        ws.Cells[3, 1, 3, 3].Merge = true;
         ws.Cells[3, 1].Value = $"Khóa ngày {DateTime.Now:dd/MM/yyyy}";
-        ws.Cells[3, 1].Style.Font.UnderLine = true; // Sửa lỗi CS1061
+        ws.Cells[3, 1].Style.Font.UnderLine = true;
         ws.Cells[3, 1].Style.Font.Bold = true;
         ws.Cells[3, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 
-        // Bên phải
-        ws.Cells[1, 5, 1, 7].Merge = true;
-        ws.Cells[1, 5].Value = $"DANH SÁCH PHÒNG THI SỐ: {phong}";
-        ws.Cells[1, 5].Style.Font.Bold = true;
-        ws.Cells[1, 5].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        // Header Bên phải
+        ws.Cells[1, 4, 1, 5].Merge = true;
+        ws.Cells[1, 4].Value = $"DANH SÁCH PHÒNG THI SỐ: {phong}";
+        ws.Cells[1, 4].Style.Font.Bold = true;
+        ws.Cells[1, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 
-        ws.Cells[2, 5, 2, 7].Merge = true;
-        ws.Cells[2, 5].Value = $"MÔN: {monThi.ToUpper()}";
-        ws.Cells[2, 5].Style.Font.Bold = true;
-        ws.Cells[2, 5].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        ws.Cells[2, 4, 2, 5].Merge = true;
+        ws.Cells[2, 4].Value = $"MÔN: {monThi.ToUpper()}";
+        ws.Cells[2, 4].Style.Font.Bold = true;
+        ws.Cells[2, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 
-        // --- BẢNG DỮ LIỆU THÍ SINH ---
-        ws.Cells[5, 1].Value = "STT";
-        ws.Cells[5, 2].Value = "SBD";
-        ws.Cells[5, 3].Value = "Họ và Tên";
-        ws.Cells[5, 4].Value = "Số CCCD/Định danh";
-        ws.Cells[5, 5].Value = "Trường THPT/THCS";
-        ws.Cells[5, 6].Value = "Môn Thi";
-        ws.Cells[5, 7].Value = "Chữ ký thí sinh";
+        // TIÊU ĐỀ BẢNG - 5 CỘT
+        ws.Cells[5, 1].Value = "Số Báo Danh";
+        ws.Cells[5, 2].Value = "Họ và Tên";
+        ws.Cells[5, 3].Value = "Ngày Sinh";
+        ws.Cells[5, 4].Value = "Học Sinh Trường";
+        ws.Cells[5, 5].Value = "Ghi Chú";
 
-        using (var range = ws.Cells[5, 1, 5, 7])
+        using (var range = ws.Cells[5, 1, 5, 5])
         {
             range.Style.Font.Bold = true;
             range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
@@ -208,23 +204,20 @@ app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) 
         for (int i = 0; i < thiSinhs.Count; i++)
         {
             int row = i + 6;
-            ws.Cells[row, 1].Value = i + 1;
-            ws.Cells[row, 2].Value = thiSinhs[i].SBD;
-            ws.Cells[row, 3].Value = thiSinhs[i].HoTen;
-            ws.Cells[row, 4].Value = thiSinhs[i].CCCD;
-            ws.Cells[row, 5].Value = thiSinhs[i].TenTruong;
-            ws.Cells[row, 6].Value = thiSinhs[i].MonThi;
-            ws.Cells[row, 7].Value = "";
+            ws.Cells[row, 1].Value = thiSinhs[i].SBD;
+            ws.Cells[row, 2].Value = thiSinhs[i].HoTen;
+            ws.Cells[row, 3].Value = thiSinhs[i].NgayDangKy.ToString("dd/MM/yyyy");
+            ws.Cells[row, 4].Value = thiSinhs[i].TenTruong;
+            ws.Cells[row, 5].Value = "";
         }
 
-        // --- TIÊU ĐỀ CUỐI TRANG (FOOTER) ---
+        // Footer
         int lastRow = thiSinhs.Count + 8;
-        ws.Cells[lastRow, 5, lastRow, 7].Merge = true;
-        ws.Cells[lastRow, 5].Value = "CHỦ TỊCH HỘI ĐỒNG/BAN COI THI";
-        ws.Cells[lastRow, 5].Style.Font.Bold = true;
-        ws.Cells[lastRow, 5].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        ws.Cells[lastRow, 4, lastRow, 5].Merge = true;
+        ws.Cells[lastRow, 4].Value = "CHỦ TỊCH HỘI ĐỒNG/BAN COI THI";
+        ws.Cells[lastRow, 4].Style.Font.Bold = true;
+        ws.Cells[lastRow, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 
-        // Xử lý an toàn tránh warning CS8602
         if (ws.Dimension != null)
         {
             ws.Cells[ws.Dimension.Address].AutoFitColumns();
@@ -234,7 +227,6 @@ app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) 
     var bytes = await package.GetAsByteArrayAsync();
     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_PhongThi_VinhLong.xlsx");
 }).DisableAntiforgery();
-
 
 // --- API IMPORT EXCEL TRƯỜNG (CÓ CHECK MÔN THI SỞ CẤP) ---
 app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, HttpContext ctx) =>
