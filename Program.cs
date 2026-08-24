@@ -172,27 +172,62 @@ app.MapPost("/api/so/import-truong", async (IFormFile file, AppDbContext db, Htt
     return Results.Ok(new { message = $"Đã tạo thành công {countSuccess} tài khoản trường!" });
 }).DisableAntiforgery();
 
+// --- API 2: TỰ ĐỘNG ĐÁNH SBD (6 KÝ TỰ) VÀ CHIA PHÒNG THI (001, 002...) ---
 app.MapPost("/api/so/chia-phong", async (AppDbContext db, HttpContext ctx, ChiaPhongRequest req) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
+
     int hsPerPhong = req.SoHocSinhMoiPhong > 0 ? req.SoHocSinhMoiPhong : 24;
-    var monThiList = await db.ThiSinhs.Select(x => x.MonThi).Distinct().ToListAsync();
+    
+    // Lấy danh sách tất cả các môn thi
+    var monThiList = await db.DanhMucMonThis.OrderBy(x => x.MaMon).Select(x => x.TenMon).ToListAsync();
+
+    int globalSBDIndex = 1;  // Bộ đếm STT SBD toàn tỉnh (4 chữ số: 0001, 0002...)
+    int globalPhongIndex = 1; // Bộ đếm Phòng thi toàn tỉnh (3 chữ số: 001, 002...)
 
     foreach (var mon in monThiList)
     {
-        var thiSinhs = await db.ThiSinhs.Where(x => x.MonThi == mon).OrderBy(x => x.HoTen).ToListAsync();
-        int phongIdx = 1, inPhongCount = 0;
+        // Lấy danh sách thí sinh theo môn, sắp xếp theo Trường rồi tới Họ Tên
+        var thiSinhs = await db.ThiSinhs
+            .Where(x => x.MonThi == mon)
+            .OrderBy(x => x.MaTruong)
+            .ThenBy(x => x.HoTen)
+            .ToListAsync();
+
+        if (thiSinhs.Count == 0) continue;
+
+        int inPhongCount = 0;
 
         for (int i = 0; i < thiSinhs.Count; i++)
         {
-            if (inPhongCount >= hsPerPhong) { phongIdx++; inPhongCount = 0; }
+            // Nếu phòng hiện tại đã đủ số học sinh quy định thì chuyển sang phòng tiếp theo
+            if (inPhongCount >= hsPerPhong)
+            {
+                globalPhongIndex++;
+                inPhongCount = 0;
+            }
+
             inPhongCount++;
-            thiSinhs[i].SBD = $"{mon.Substring(0, Math.Min(3, mon.Length)).ToUpper()}{(i + 1):D3}";
-            thiSinhs[i].PhongThi = $"P.{mon}-{phongIdx:D2}";
+
+            // Lấy 2 ký tự mã trường (nếu mã trường dạng chữ thì lấy 2 ký tự đầu, nếu thiếu thì tự bù 0)
+            string maTruongPrefix = thiSinhs[i].MaTruong.PadLeft(2, '0');
+            if (maTruongPrefix.Length > 2) maTruongPrefix = maTruongPrefix.Substring(0, 2);
+
+            // TẠO SBD: 2 ký tự Mã Trường + 4 ký tự STT (Ví dụ: 010001)
+            thiSinhs[i].SBD = $"{maTruongPrefix}{globalSBDIndex:D4}";
+
+            // TẠO PHÒNG THI: Định dạng 3 chữ số (Ví dụ: 001, 002...)
+            thiSinhs[i].PhongThi = globalPhongIndex.ToString("D3");
+
+            globalSBDIndex++;
         }
+
+        // Sau khi hết 1 môn, môn tiếp theo sẽ bắt đầu ở một phòng thi mới
+        globalPhongIndex++;
     }
+
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = "Đã đánh SBD và Chia Phòng Thi thành công!" });
+    return Results.Ok(new { message = $"Đã chia thành công {globalPhongIndex - 1} phòng thi và đánh SBD cho toàn bộ thí sinh!" });
 }).DisableAntiforgery();
 
 app.MapGet("/api/so/export-excel", async (AppDbContext db, HttpContext ctx) =>
