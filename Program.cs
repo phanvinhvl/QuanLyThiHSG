@@ -31,7 +31,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
-
+app.MapGet("/", () => Results.Redirect("/login"));
 // --- API AUTH ---
 app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginRequest req) =>
 {
