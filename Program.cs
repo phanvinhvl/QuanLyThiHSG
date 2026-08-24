@@ -39,7 +39,10 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
     {
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (""Id"" SERIAL PRIMARY KEY, ""MaTruong"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MatKhau"" TEXT NOT NULL, ""Role"" TEXT NOT NULL);");
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ThiSinhs"" (""Id"" SERIAL PRIMARY KEY, ""HoTen"" TEXT NOT NULL, ""CCCD"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MaTruong"" TEXT NOT NULL, ""MonThi"" TEXT NOT NULL, ""NgayDangKy"" TIMESTAMP WITH TIME ZONE NOT NULL, ""SBD"" TEXT, ""PhongThi"" TEXT);");
-        await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""DanhMucMonThis"" (""Id"" SERIAL PRIMARY KEY, ""TenMon"" TEXT NOT NULL);");
+        await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""DanhMucMonThis"" (""Id"" SERIAL PRIMARY KEY, ""MaMon"" TEXT NOT NULL, ""TenMon"" TEXT NOT NULL);");
+
+        // Bổ sung cột MaMon nếu chưa có trong DB
+        try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""DanhMucMonThis"" ADD COLUMN IF NOT EXISTS ""MaMon"" TEXT;"); } catch {}
 
         if (!await db.TaiKhoans.AnyAsync(x => x.Role == "So"))
         {
@@ -47,11 +50,14 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
             await db.SaveChangesAsync();
         }
 
-        // Tạo danh mục môn thi mặc định nếu chưa có
+        // Khởi tạo danh mục môn thi mặc định kèm Mã môn (01, 02, ...)
         if (!await db.DanhMucMonThis.AnyAsync())
         {
             var defaultMons = new[] { "Toán", "Ngữ Văn", "Tiếng Anh", "Vật Lý", "Hóa Học", "Sinh Học", "Tin Học", "Lịch Sử", "Địa Lý" };
-            foreach (var m in defaultMons) db.DanhMucMonThis.Add(new DanhMucMonThi { TenMon = m });
+            for (int i = 0; i < defaultMons.Length; i++)
+            {
+                db.DanhMucMonThis.Add(new DanhMucMonThi { MaMon = (i + 1).ToString("D2"), TenMon = defaultMons[i] });
+            }
             await db.SaveChangesAsync();
         }
 
@@ -81,12 +87,15 @@ app.MapPost("/api/so/them-mon", async (AppDbContext db, HttpContext ctx, DanhMuc
     if (await db.DanhMucMonThis.AnyAsync(x => x.TenMon.ToLower() == tenMonClean.ToLower()))
         return Results.BadRequest(new { message = "Môn thi này đã tồn tại!" });
 
-    db.DanhMucMonThis.Add(new DanhMucMonThi { TenMon = tenMonClean });
+    // Tự động sinh Mã môn 2 ký tự (01, 02, 03...)
+    int count = await db.DanhMucMonThis.CountAsync();
+    string maMonMoi = (count + 1).ToString("D2");
+
+    db.DanhMucMonThis.Add(new DanhMucMonThi { MaMon = maMonMoi, TenMon = tenMonClean });
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = "Đã thêm môn thi mới!" });
+    return Results.Ok(new { message = $"Đã thêm môn thi '{tenMonClean}' với Mã môn: {maMonMoi}!" });
 }).DisableAntiforgery();
 
-// --- API SỬA TÊN MÔN THI (SỞ) ---
 app.MapPut("/api/so/sua-mon/{id}", async (int id, AppDbContext db, HttpContext ctx, DanhMucMonThi req) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
@@ -96,23 +105,18 @@ app.MapPut("/api/so/sua-mon/{id}", async (int id, AppDbContext db, HttpContext c
     if (item == null) return Results.NotFound(new { message = "Không tìm thấy môn thi!" });
 
     var tenMonClean = req.TenMon.Trim();
-    
-    // Kiểm tra trùng tên với môn khác
     if (await db.DanhMucMonThis.AnyAsync(x => x.Id != id && x.TenMon.ToLower() == tenMonClean.ToLower()))
         return Results.BadRequest(new { message = "Tên môn thi này đã tồn tại!" });
 
     string tenMonCu = item.TenMon;
     item.TenMon = tenMonClean;
 
-    // Tự động cập nhật lại tên môn mới cho toàn bộ thí sinh đã đăng ký môn cũ
+    // Cập nhật lại tên môn cho thí sinh đã đăng ký
     var listThiSinh = await db.ThiSinhs.Where(x => x.MonThi == tenMonCu).ToListAsync();
-    foreach (var ts in listThiSinh)
-    {
-        ts.MonThi = tenMonClean;
-    }
+    foreach (var ts in listThiSinh) { ts.MonThi = tenMonClean; }
 
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = $"Đã đổi tên môn từ '{tenMonCu}' thành '{tenMonClean}'!" });
+    return Results.Ok(new { message = $"Đã cập nhật tên môn thi thành '{tenMonClean}'!" });
 }).DisableAntiforgery();
 
 app.MapDelete("/api/so/xoa-mon/{id}", async (int id, AppDbContext db, HttpContext ctx) =>
@@ -123,195 +127,10 @@ app.MapDelete("/api/so/xoa-mon/{id}", async (int id, AppDbContext db, HttpContex
 
     db.DanhMucMonThis.Remove(item);
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = "Đã xóa môn thi!" });
+    return Results.Ok(new { message = "Đã xóa môn thi khỏi danh mục!" });
 }).DisableAntiforgery();
 
-// --- API XUẤT FILE EXCEL DANH SÁCH PHÒNG THI (5 CỘT THEO MẪU A4) ---
-app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) =>
-{
-    var listPhong = await db.ThiSinhs
-        .Where(x => !string.IsNullOrEmpty(x.PhongThi))
-        .Select(x => x.PhongThi)
-        .Distinct()
-        .OrderBy(x => x)
-        .ToListAsync();
-
-    if (listPhong.Count == 0) 
-        return Results.BadRequest(new { message = "Chưa có dữ liệu phòng thi! Vui lòng thực hiện Chia Phòng Thi trước." });
-
-    using var package = new ExcelPackage();
-
-    foreach (var phong in listPhong)
-    {
-        if (string.IsNullOrEmpty(phong)) continue;
-
-        string sheetName = phong.Replace("/", "-").Replace(":", "-");
-        if (sheetName.Length > 30) sheetName = sheetName.Substring(0, 30);
-
-        var ws = package.Workbook.Worksheets.Add(sheetName);
-
-        var sampleTS = await db.ThiSinhs.FirstOrDefaultAsync(x => x.PhongThi == phong);
-        string monThi = sampleTS?.MonThi ?? "";
-
-        // Header Bên trái
-        ws.Cells[1, 1, 1, 3].Merge = true;
-        ws.Cells[1, 1].Value = "SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG";
-        ws.Cells[1, 1].Style.Font.Bold = true;
-        ws.Cells[1, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-
-        ws.Cells[2, 1, 2, 3].Merge = true;
-        ws.Cells[2, 1].Value = "KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH";
-        ws.Cells[2, 1].Style.Font.Bold = true;
-        ws.Cells[2, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-
-        ws.Cells[3, 1, 3, 3].Merge = true;
-        ws.Cells[3, 1].Value = $"Khóa ngày {DateTime.Now:dd/MM/yyyy}";
-        ws.Cells[3, 1].Style.Font.UnderLine = true;
-        ws.Cells[3, 1].Style.Font.Bold = true;
-        ws.Cells[3, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-
-        // Header Bên phải
-        ws.Cells[1, 4, 1, 5].Merge = true;
-        ws.Cells[1, 4].Value = $"DANH SÁCH PHÒNG THI SỐ: {phong}";
-        ws.Cells[1, 4].Style.Font.Bold = true;
-        ws.Cells[1, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-
-        ws.Cells[2, 4, 2, 5].Merge = true;
-        ws.Cells[2, 4].Value = $"MÔN: {monThi.ToUpper()}";
-        ws.Cells[2, 4].Style.Font.Bold = true;
-        ws.Cells[2, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-
-        // TIÊU ĐỀ BẢNG - 5 CỘT
-        ws.Cells[5, 1].Value = "Số Báo Danh";
-        ws.Cells[5, 2].Value = "Họ và Tên";
-        ws.Cells[5, 3].Value = "Ngày Sinh";
-        ws.Cells[5, 4].Value = "Học Sinh Trường";
-        ws.Cells[5, 5].Value = "Ghi Chú";
-
-        using (var range = ws.Cells[5, 1, 5, 5])
-        {
-            range.Style.Font.Bold = true;
-            range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-            range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-            range.Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-        }
-
-        var thiSinhs = await db.ThiSinhs
-            .Where(x => x.PhongThi == phong)
-            .OrderBy(x => x.SBD)
-            .ToListAsync();
-
-        for (int i = 0; i < thiSinhs.Count; i++)
-        {
-            int row = i + 6;
-            ws.Cells[row, 1].Value = thiSinhs[i].SBD;
-            ws.Cells[row, 2].Value = thiSinhs[i].HoTen;
-            ws.Cells[row, 3].Value = thiSinhs[i].NgayDangKy.ToString("dd/MM/yyyy");
-            ws.Cells[row, 4].Value = thiSinhs[i].TenTruong;
-            ws.Cells[row, 5].Value = "";
-        }
-
-        // Footer
-        int lastRow = thiSinhs.Count + 8;
-        ws.Cells[lastRow, 4, lastRow, 5].Merge = true;
-        ws.Cells[lastRow, 4].Value = "CHỦ TỊCH HỘI ĐỒNG/BAN COI THI";
-        ws.Cells[lastRow, 4].Style.Font.Bold = true;
-        ws.Cells[lastRow, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-
-        if (ws.Dimension != null)
-        {
-            ws.Cells[ws.Dimension.Address].AutoFitColumns();
-        }
-    }
-
-    var bytes = await package.GetAsByteArrayAsync();
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_PhongThi_VinhLong.xlsx");
-}).DisableAntiforgery();
-
-// --- API IMPORT EXCEL TRƯỜNG (CÓ CHECK MÔN THI SỞ CẤP) ---
-app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, HttpContext ctx) =>
-{
-    if (!ctx.User.IsInRole("Truong")) return Results.Unauthorized();
-    var maTruong = ctx.User.FindFirstValue(ClaimTypes.Name);
-    var truongInfo = await db.TaiKhoans.FirstOrDefaultAsync(x => x.MaTruong == maTruong);
-
-    if (file == null || file.Length == 0) return Results.BadRequest(new { message = "Vui lòng chọn file Excel!" });
-
-    var dsMonValid = await db.DanhMucMonThis.Select(x => x.TenMon.ToLower()).ToListAsync();
-
-    using var stream = new MemoryStream();
-    await file.CopyToAsync(stream);
-    using var package = new ExcelPackage(stream);
-    var ws = package.Workbook.Worksheets[0];
-    int rowCount = ws.Dimension?.Rows ?? 0;
-
-    int countSuccess = 0;
-    List<string> loiMon = new List<string>();
-
-    for (int row = 2; row <= rowCount; row++)
-    {
-        var hoTen = ws.Cells[row, 1].Value?.ToString()?.Trim();
-        var cccd = ws.Cells[row, 2].Value?.ToString()?.Trim();
-        var monThi = ws.Cells[row, 3].Value?.ToString()?.Trim();
-
-        if (string.IsNullOrEmpty(hoTen) || string.IsNullOrEmpty(cccd)) continue;
-
-        // KIỂM TRA MÔN THI CÓ TRONG DANH MỤC KHÔNG
-        if (string.IsNullOrEmpty(monThi) || !dsMonValid.Contains(monThi.ToLower()))
-        {
-            loiMon.Add($"Dòng {row}: Môn '{monThi}' không nằm trong danh mục Sở quy định!");
-            continue;
-        }
-
-        var exists = await db.ThiSinhs.AnyAsync(x => x.CCCD == cccd);
-        if (!exists)
-        {
-            // Lấy đúng tên môn thi chuẩn danh mục
-            var monChuan = await db.DanhMucMonThis.FirstAsync(x => x.TenMon.ToLower() == monThi.ToLower());
-            db.ThiSinhs.Add(new ThiSinh
-            {
-                HoTen = hoTen,
-                CCCD = cccd,
-                MonThi = monChuan.TenMon,
-                TenTruong = truongInfo?.TenTruong ?? maTruong,
-                MaTruong = maTruong,
-                NgayDangKy = DateTime.UtcNow
-            });
-            countSuccess++;
-        }
-    }
-
-    await db.SaveChangesAsync();
-
-    string msg = $"Đã nhập thành công {countSuccess} học sinh!";
-    if (loiMon.Count > 0) msg += $"\nCó {loiMon.Count} dòng bị bỏ qua do sai môn thi.";
-
-    return Results.Ok(new { message = msg, loiMon });
-}).DisableAntiforgery();
-
-// --- API SỬA THÍ SINH (CHECK MÔN THI SỞ CẤP) ---
-app.MapPut("/api/truong/sua-thisinh/{id}", async (int id, AppDbContext db, HttpContext ctx, UpdateThiSinhReq req) =>
-{
-    if (!ctx.User.IsInRole("Truong")) return Results.Unauthorized();
-    var maTruong = ctx.User.FindFirstValue(ClaimTypes.Name);
-
-    var ts = await db.ThiSinhs.FirstOrDefaultAsync(x => x.Id == id && x.MaTruong == maTruong);
-    if (ts == null) return Results.NotFound(new { message = "Không tìm thấy học sinh!" });
-
-    var monChuan = await db.DanhMucMonThis.FirstOrDefaultAsync(x => x.TenMon.ToLower() == req.MonThi.ToLower());
-    if (monChuan == null)
-        return Results.BadRequest(new { message = $"Môn '{req.MonThi}' không hợp lệ! Vui lòng chọn môn trong danh mục." });
-
-    ts.HoTen = req.HoTen?.Trim() ?? ts.HoTen;
-    ts.CCCD = req.CCCD?.Trim() ?? ts.CCCD;
-    ts.MonThi = monChuan.TenMon;
-    if (!string.IsNullOrEmpty(req.TenTruong)) ts.TenTruong = req.TenTruong.Trim();
-
-    await db.SaveChangesAsync();
-    return Results.Ok(new { message = "Cập nhật thành công!" });
-}).DisableAntiforgery();
-
-// Các API khác giữ nguyên (so/import-truong, so/chia-phong, so/export-excel, truong/xoa-thisinh...)
+// Các API khác (import-truong, chia-phong, export-excel, export-phong-thi, upload-excel, sua-thisinh...) giữ nguyên
 app.MapPost("/api/so/import-truong", async (IFormFile file, AppDbContext db, HttpContext ctx) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
@@ -380,6 +199,55 @@ app.MapGet("/api/so/export-excel", async (AppDbContext db, HttpContext ctx) =>
     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_ThiSinh_SBD_PhongThi.xlsx");
 });
 
+app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) =>
+{
+    var listPhong = await db.ThiSinhs.Where(x => !string.IsNullOrEmpty(x.PhongThi)).Select(x => x.PhongThi).Distinct().OrderBy(x => x).ToListAsync();
+    if (listPhong.Count == 0) return Results.BadRequest(new { message = "Chưa có dữ liệu phòng thi!" });
+
+    using var package = new ExcelPackage();
+    foreach (var phong in listPhong)
+    {
+        if (string.IsNullOrEmpty(phong)) continue;
+        string sheetName = phong.Replace("/", "-").Replace(":", "-");
+        if (sheetName.Length > 30) sheetName = sheetName.Substring(0, 30);
+
+        var ws = package.Workbook.Worksheets.Add(sheetName);
+        var sampleTS = await db.ThiSinhs.FirstOrDefaultAsync(x => x.PhongThi == phong);
+        string monThi = sampleTS?.MonThi ?? "";
+
+        ws.Cells[1, 1, 1, 3].Merge = true; ws.Cells[1, 1].Value = "SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG"; ws.Cells[1, 1].Style.Font.Bold = true; ws.Cells[1, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        ws.Cells[2, 1, 2, 3].Merge = true; ws.Cells[2, 1].Value = "KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH"; ws.Cells[2, 1].Style.Font.Bold = true; ws.Cells[2, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        ws.Cells[3, 1, 3, 3].Merge = true; ws.Cells[3, 1].Value = $"Khóa ngày {DateTime.Now:dd/MM/yyyy}"; ws.Cells[3, 1].Style.Font.UnderLine = true; ws.Cells[3, 1].Style.Font.Bold = true; ws.Cells[3, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+
+        ws.Cells[1, 4, 1, 5].Merge = true; ws.Cells[1, 4].Value = $"DANH SÁCH PHÒNG THI SỐ: {phong}"; ws.Cells[1, 4].Style.Font.Bold = true; ws.Cells[1, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        ws.Cells[2, 4, 2, 5].Merge = true; ws.Cells[2, 4].Value = $"MÔN: {monThi.ToUpper()}"; ws.Cells[2, 4].Style.Font.Bold = true; ws.Cells[2, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+
+        ws.Cells[5, 1].Value = "Số Báo Danh"; ws.Cells[5, 2].Value = "Họ và Tên"; ws.Cells[5, 3].Value = "Ngày Sinh"; ws.Cells[5, 4].Value = "Học Sinh Trường"; ws.Cells[5, 5].Value = "Ghi Chú";
+        using (var range = ws.Cells[5, 1, 5, 5])
+        {
+            range.Style.Font.Bold = true; range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid; range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray); range.Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        }
+
+        var thiSinhs = await db.ThiSinhs.Where(x => x.PhongThi == phong).OrderBy(x => x.SBD).ToListAsync();
+        for (int i = 0; i < thiSinhs.Count; i++)
+        {
+            int row = i + 6;
+            ws.Cells[row, 1].Value = thiSinhs[i].SBD;
+            ws.Cells[row, 2].Value = thiSinhs[i].HoTen;
+            ws.Cells[row, 3].Value = thiSinhs[i].NgayDangKy.ToString("dd/MM/yyyy");
+            ws.Cells[row, 4].Value = thiSinhs[i].TenTruong;
+            ws.Cells[row, 5].Value = "";
+        }
+
+        int lastRow = thiSinhs.Count + 8;
+        ws.Cells[lastRow, 4, lastRow, 5].Merge = true; ws.Cells[lastRow, 4].Value = "CHỦ TỊCH HỘI ĐỒNG/BAN COI THI"; ws.Cells[lastRow, 4].Style.Font.Bold = true; ws.Cells[lastRow, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        if (ws.Dimension != null) ws.Cells[ws.Dimension.Address].AutoFitColumns();
+    }
+
+    var bytes = await package.GetAsByteArrayAsync();
+    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_PhongThi_VinhLong.xlsx");
+}).DisableAntiforgery();
+
 app.MapGet("/api/truong/download-mau", async (AppDbContext db) =>
 {
     using var package = new ExcelPackage();
@@ -389,18 +257,77 @@ app.MapGet("/api/truong/download-mau", async (AppDbContext db) =>
     var mons = await db.DanhMucMonThis.Select(x => x.TenMon).ToListAsync();
     ws.Cells[2, 1].Value = "Nguyễn Văn A"; ws.Cells[2, 2].Value = "038200123456"; ws.Cells[2, 3].Value = mons.FirstOrDefault() ?? "Toán";
 
-    // Tạo thêm Sheet Hướng dẫn danh mục môn thi
     var wsGuide = package.Workbook.Worksheets.Add("DanhMucMonThiChuan");
-    wsGuide.Cells[1, 1].Value = "STT"; wsGuide.Cells[1, 2].Value = "Danh Mục Môn Thi Cho Phép";
-    for (int i = 0; i < mons.Count; i++)
+    wsGuide.Cells[1, 1].Value = "STT"; wsGuide.Cells[1, 2].Value = "Mã Môn"; wsGuide.Cells[1, 3].Value = "Tên Môn Thi Quy Định";
+    var listAll = await db.DanhMucMonThis.OrderBy(x => x.MaMon).ToListAsync();
+    for (int i = 0; i < listAll.Count; i++)
     {
         wsGuide.Cells[i + 2, 1].Value = i + 1;
-        wsGuide.Cells[i + 2, 2].Value = mons[i];
+        wsGuide.Cells[i + 2, 2].Value = listAll[i].MaMon;
+        wsGuide.Cells[i + 2, 3].Value = listAll[i].TenMon;
     }
 
     var bytes = await package.GetAsByteArrayAsync();
     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Mau_Dang_Ky_HSG.xlsx");
 });
+
+app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, HttpContext ctx) =>
+{
+    if (!ctx.User.IsInRole("Truong")) return Results.Unauthorized();
+    var maTruong = ctx.User.FindFirstValue(ClaimTypes.Name);
+    var truongInfo = await db.TaiKhoans.FirstOrDefaultAsync(x => x.MaTruong == maTruong);
+
+    if (file == null || file.Length == 0) return Results.BadRequest(new { message = "Vui lòng chọn file Excel!" });
+
+    var dsMonValid = await db.DanhMucMonThis.Select(x => x.TenMon.ToLower()).ToListAsync();
+
+    using var stream = new MemoryStream();
+    await file.CopyToAsync(stream);
+    using var package = new ExcelPackage(stream);
+    var ws = package.Workbook.Worksheets[0];
+    int rowCount = ws.Dimension?.Rows ?? 0;
+    int countSuccess = 0;
+
+    for (int row = 2; row <= rowCount; row++)
+    {
+        var hoTen = ws.Cells[row, 1].Value?.ToString()?.Trim();
+        var cccd = ws.Cells[row, 2].Value?.ToString()?.Trim();
+        var monThi = ws.Cells[row, 3].Value?.ToString()?.Trim();
+
+        if (string.IsNullOrEmpty(hoTen) || string.IsNullOrEmpty(cccd)) continue;
+        if (string.IsNullOrEmpty(monThi) || !dsMonValid.Contains(monThi.ToLower())) continue;
+
+        var exists = await db.ThiSinhs.AnyAsync(x => x.CCCD == cccd);
+        if (!exists)
+        {
+            var monChuan = await db.DanhMucMonThis.FirstAsync(x => x.TenMon.ToLower() == monThi.ToLower());
+            db.ThiSinhs.Add(new ThiSinh
+            {
+                HoTen = hoTen, CCCD = cccd, MonThi = monChuan.TenMon, TenTruong = truongInfo?.TenTruong ?? maTruong, MaTruong = maTruong, NgayDangKy = DateTime.UtcNow
+            });
+            countSuccess++;
+        }
+    }
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = $"Đã nhập thành công {countSuccess} học sinh!" });
+}).DisableAntiforgery();
+
+app.MapPut("/api/truong/sua-thisinh/{id}", async (int id, AppDbContext db, HttpContext ctx, UpdateThiSinhReq req) =>
+{
+    if (!ctx.User.IsInRole("Truong")) return Results.Unauthorized();
+    var maTruong = ctx.User.FindFirstValue(ClaimTypes.Name);
+    var ts = await db.ThiSinhs.FirstOrDefaultAsync(x => x.Id == id && x.MaTruong == maTruong);
+    if (ts == null) return Results.NotFound();
+
+    var monChuan = await db.DanhMucMonThis.FirstOrDefaultAsync(x => x.TenMon.ToLower() == req.MonThi.ToLower());
+    if (monChuan == null) return Results.BadRequest(new { message = "Môn thi không thuộc danh mục quy định!" });
+
+    ts.HoTen = req.HoTen?.Trim() ?? ts.HoTen; ts.CCCD = req.CCCD?.Trim() ?? ts.CCCD; ts.MonThi = monChuan.TenMon;
+    if (!string.IsNullOrEmpty(req.TenTruong)) ts.TenTruong = req.TenTruong.Trim();
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Cập nhật thành công!" });
+}).DisableAntiforgery();
 
 app.MapDelete("/api/truong/xoa-thisinh/{id}", async (int id, AppDbContext db, HttpContext ctx) =>
 {
@@ -415,6 +342,7 @@ app.MapDelete("/api/truong/xoa-thisinh/{id}", async (int id, AppDbContext db, Ht
 
 app.Run();
 
+// --- DATA MODELS ---
 public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
@@ -426,6 +354,7 @@ public class AppDbContext : DbContext
 public class DanhMucMonThi
 {
     public int Id { get; set; }
+    public string MaMon { get; set; } = "";
     public string TenMon { get; set; } = "";
 }
 
