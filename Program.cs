@@ -39,9 +39,9 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
     {
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (""Id"" SERIAL PRIMARY KEY, ""MaTruong"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MatKhau"" TEXT NOT NULL, ""Role"" TEXT NOT NULL);");
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ThiSinhs"" (""Id"" SERIAL PRIMARY KEY, ""HoTen"" TEXT NOT NULL, ""CCCD"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MaTruong"" TEXT NOT NULL, ""MonThi"" TEXT NOT NULL, ""NgayDangKy"" TIMESTAMP WITH TIME ZONE NOT NULL, ""SBD"" TEXT, ""PhongThi"" TEXT);");
-        await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""DanhMucMonThis"" (""Id"" SERIAL PRIMARY KEY, ""MaMon"" TEXT NOT NULL, ""TenMon"" TEXT NOT NULL);");
+        await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""DanhMucMonThis"" (""Id"" SERIAL PRIMARY KEY, ""MaMon"" TEXT, ""TenMon"" TEXT NOT NULL);");
 
-        // Bổ sung cột MaMon nếu chưa có trong DB
+        // Bổ sung cột MaMon nếu chưa có trong DB cũ
         try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""DanhMucMonThis"" ADD COLUMN IF NOT EXISTS ""MaMon"" TEXT;"); } catch {}
 
         if (!await db.TaiKhoans.AnyAsync(x => x.Role == "So"))
@@ -50,7 +50,7 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
             await db.SaveChangesAsync();
         }
 
-        // Khởi tạo danh mục môn thi mặc định kèm Mã môn (01, 02, ...)
+        // Tạo danh mục môn thi mặc định nếu DB trống
         if (!await db.DanhMucMonThis.AnyAsync())
         {
             var defaultMons = new[] { "Toán", "Ngữ Văn", "Tiếng Anh", "Vật Lý", "Hóa Học", "Sinh Học", "Tin Học", "Lịch Sử", "Địa Lý" };
@@ -59,6 +59,20 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
                 db.DanhMucMonThis.Add(new DanhMucMonThi { MaMon = (i + 1).ToString("D2"), TenMon = defaultMons[i] });
             }
             await db.SaveChangesAsync();
+        }
+        else
+        {
+            // Cập nhật Mã môn (01, 02...) cho những môn cũ đang bị null Mã môn
+            var listNullMa = await db.DanhMucMonThis.Where(x => string.IsNullOrEmpty(x.MaMon)).ToListAsync();
+            if (listNullMa.Count > 0)
+            {
+                int countCurrent = await db.DanhMucMonThis.CountAsync(x => !string.IsNullOrEmpty(x.MaMon));
+                for (int i = 0; i < listNullMa.Count; i++)
+                {
+                    listNullMa[i].MaMon = (countCurrent + i + 1).ToString("D2");
+                }
+                await db.SaveChangesAsync();
+            }
         }
 
         var acc = await db.TaiKhoans.FirstOrDefaultAsync(x => x.MaTruong == req.MaTruong && x.MatKhau == req.MatKhau);
@@ -87,7 +101,6 @@ app.MapPost("/api/so/them-mon", async (AppDbContext db, HttpContext ctx, DanhMuc
     if (await db.DanhMucMonThis.AnyAsync(x => x.TenMon.ToLower() == tenMonClean.ToLower()))
         return Results.BadRequest(new { message = "Môn thi này đã tồn tại!" });
 
-    // Tự động sinh Mã môn 2 ký tự (01, 02, 03...)
     int count = await db.DanhMucMonThis.CountAsync();
     string maMonMoi = (count + 1).ToString("D2");
 
@@ -111,7 +124,6 @@ app.MapPut("/api/so/sua-mon/{id}", async (int id, AppDbContext db, HttpContext c
     string tenMonCu = item.TenMon;
     item.TenMon = tenMonClean;
 
-    // Cập nhật lại tên môn cho thí sinh đã đăng ký
     var listThiSinh = await db.ThiSinhs.Where(x => x.MonThi == tenMonCu).ToListAsync();
     foreach (var ts in listThiSinh) { ts.MonThi = tenMonClean; }
 
@@ -130,7 +142,7 @@ app.MapDelete("/api/so/xoa-mon/{id}", async (int id, AppDbContext db, HttpContex
     return Results.Ok(new { message = "Đã xóa môn thi khỏi danh mục!" });
 }).DisableAntiforgery();
 
-// Các API khác (import-truong, chia-phong, export-excel, export-phong-thi, upload-excel, sua-thisinh...) giữ nguyên
+// --- CÁC API KHÁC GIỮ NGUYÊN ---
 app.MapPost("/api/so/import-truong", async (IFormFile file, AppDbContext db, HttpContext ctx) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
@@ -259,11 +271,11 @@ app.MapGet("/api/truong/download-mau", async (AppDbContext db) =>
 
     var wsGuide = package.Workbook.Worksheets.Add("DanhMucMonThiChuan");
     wsGuide.Cells[1, 1].Value = "STT"; wsGuide.Cells[1, 2].Value = "Mã Môn"; wsGuide.Cells[1, 3].Value = "Tên Môn Thi Quy Định";
-    var listAll = await db.DanhMucMonThis.OrderBy(x => x.MaMon).ToListAsync();
+    var listAll = await db.DanhMucMonThis.ToListAsync();
     for (int i = 0; i < listAll.Count; i++)
     {
         wsGuide.Cells[i + 2, 1].Value = i + 1;
-        wsGuide.Cells[i + 2, 2].Value = listAll[i].MaMon;
+        wsGuide.Cells[i + 2, 2].Value = listAll[i].MaMon ?? (i + 1).ToString("D2");
         wsGuide.Cells[i + 2, 3].Value = listAll[i].TenMon;
     }
 
@@ -354,7 +366,7 @@ public class AppDbContext : DbContext
 public class DanhMucMonThi
 {
     public int Id { get; set; }
-    public string MaMon { get; set; } = "";
+    public string? MaMon { get; set; }
     public string TenMon { get; set; } = "";
 }
 
