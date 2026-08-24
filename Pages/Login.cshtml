@@ -19,7 +19,7 @@
 <body class="d-flex align-items-center justify-content-center">
     <div class="card shadow-lg p-4 login-card border-0">
         <div class="text-center mb-4">
-            <h4 class="fw-bold text-primary mb-1">HỆ THỐNG THI HSG</h4>
+            <h4 class="fw-bold text-primary mb-1">HỆ THỐNG QUẢN LÝ THI HỌC SINH GIỎI</h4>
             <span class="text-muted small">SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG</span>
         </div>
 
@@ -28,7 +28,7 @@
         <form id="formLogin">
             <!-- CHỌN LOẠI TÀI KHOẢN -->
             <div class="mb-3">
-                <label class="form-label fw-bold">Loại Tài Khoản</label>
+                <label class="form-label fw-bold">Loại tài khoản</label>
                 <select id="roleSelect" class="form-select" onchange="capNhatGiaoDienRole()">
                     <option value="Truong" selected>🏫 Trường THPT / THCS</option>
                     <option value="So">🏛️ Sở Giáo Dục & Đào Tạo</option>
@@ -37,7 +37,7 @@
 
             <!-- MÃ TÀI KHOẢN -->
             <div class="mb-3">
-                <label class="form-label fw-bold" id="lblMaTaiKhoan">Mã Trường</label>
+                <label class="form-label fw-bold" id="lblMaTaiKhoan">Mã trường</label>
                 <input type="text" id="maTruong" class="form-control" required placeholder="Nhập mã trường...">
             </div>
 
@@ -59,11 +59,11 @@
             const txtMa = document.getElementById('maTruong');
 
             if (role === 'So') {
-                lbl.innerText = 'Mã Tài Khoản Sở';
+                lbl.innerText = 'Mã tài khoản Sở';
                 txtMa.value = 'SO_GD';
                 txtMa.placeholder = 'Ví dụ: SO_GD';
             } else {
-                lbl.innerText = 'Mã Trường';
+                lbl.innerText = 'Mã trường';
                 txtMa.value = '';
                 txtMa.placeholder = 'Nhập mã trường...';
             }
