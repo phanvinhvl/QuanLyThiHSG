@@ -11,6 +11,8 @@
     }
     var dsThiSinh = Db.ThiSinhs.Where(x => x.PhongThi == selectedPhong).OrderBy(x => x.SBD).ToList();
     string monThi = dsThiSinh.FirstOrDefault()?.MonThi ?? ".....";
+    string gt1 = dsThiSinh.FirstOrDefault()?.GiamThi1 ?? "....................";
+    string gt2 = dsThiSinh.FirstOrDefault()?.GiamThi2 ?? "....................";
 }
 <!DOCTYPE html>
 <html lang="vi">
@@ -19,45 +21,18 @@
     <title>Danh Sách Phòng Thi - @selectedPhong</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
-        /* Thiết lập khổ giấy A4 khi in */
-        @@page {
-            size: A4 portrait;
-            margin: 15mm 15mm 15mm 15mm;
-        }
-
-        body {
-            font-family: "Times New Roman", Times, serif;
-            color: #000;
-        }
-
-        .a4-page {
-            width: 210mm;
-            min-height: 297mm;
-            padding: 15mm;
-            margin: 0 auto;
-            background: white;
-        }
-
+        @@page { size: A4 portrait; margin: 15mm; }
+        body { font-family: "Times New Roman", Times, serif; color: #000; }
+        .a4-page { width: 210mm; min-height: 297mm; padding: 15mm; margin: 0 auto; background: white; }
         @@media print {
             .no-print { display: none !important; }
             body { padding: 0 !important; background: white !important; }
-            .a4-page {
-                width: 100% !important;
-                padding: 0 !important;
-                box-shadow: none !important;
-            }
+            .a4-page { width: 100% !important; padding: 0 !important; box-shadow: none !important; }
         }
-
-        .table-custom th, .table-custom td {
-            border: 1px solid #000 !important;
-            padding: 6px 8px;
-            vertical-align: middle;
-        }
+        .table-custom th, .table-custom td { border: 1px solid #000 !important; padding: 6px 8px; vertical-align: middle; }
     </style>
 </head>
 <body class="bg-light p-4">
-    
-    <!-- BAR CÔNG CỤ (ẨN KHI IN) -->
     <div class="container mb-4 no-print" style="max-width: 210mm;">
         <div class="card p-3 shadow-sm">
             <div class="d-flex justify-content-between align-items-center">
@@ -78,10 +53,7 @@
         </div>
     </div>
 
-    <!-- KHUNG TRANG A4 -->
     <div class="a4-page shadow-sm">
-        
-        <!-- HEADER MẪU VĨNH LONG -->
         <div class="row mb-4">
             <div class="col-6 text-center">
                 <h6 class="fw-bold mb-1">SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG</h6>
@@ -94,7 +66,6 @@
             </div>
         </div>
 
-        <!-- BẢNG DANH SÁCH CHỈ GỒM 5 CỘT THEO YÊU CẦU -->
         <table class="table table-custom w-100 my-3">
             <thead class="text-center fw-bold" style="background-color: #f2f2f2;">
                 <tr>
@@ -127,15 +98,14 @@
             </tbody>
         </table>
 
-        <!-- FOOTER CHỦ TỊCH HỘI ĐỒNG -->
         <div class="row mt-4 pt-3">
-            <div class="col-6"></div>
             <div class="col-6 text-center">
-                <p class="fw-bold mb-5">CHỦ TỊCH HỘI ĐỒNG/BAN COI THI</p>
+                <p class="fw-bold mb-5">GIÁM THỊ 1<br><span class="fw-normal">@gt1</span></p>
+            </div>
+            <div class="col-6 text-center">
+                <p class="fw-bold mb-5">GIÁM THỊ 2<br><span class="fw-normal">@gt2</span></p>
             </div>
         </div>
-
     </div>
-
 </body>
 </html>
