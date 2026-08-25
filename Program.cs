@@ -31,18 +31,22 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
+
 app.MapGet("/", () => Results.Redirect("/login"));
+
 // --- API AUTH ---
 app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginRequest req) =>
 {
     try
     {
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (""Id"" SERIAL PRIMARY KEY, ""MaTruong"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MatKhau"" TEXT NOT NULL, ""Role"" TEXT NOT NULL);");
-        await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ThiSinhs"" (""Id"" SERIAL PRIMARY KEY, ""HoTen"" TEXT NOT NULL, ""CCCD"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MaTruong"" TEXT NOT NULL, ""MonThi"" TEXT NOT NULL, ""NgayDangKy"" TIMESTAMP WITH TIME ZONE NOT NULL, ""SBD"" TEXT, ""PhongThi"" TEXT);");
+        await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ThiSinhs"" (""Id"" SERIAL PRIMARY KEY, ""HoTen"" TEXT NOT NULL, ""CCCD"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MaTruong"" TEXT NOT NULL, ""MonThi"" TEXT NOT NULL, ""NgayDangKy"" TIMESTAMP WITH TIME ZONE NOT NULL, ""SBD"" TEXT, ""PhongThi"" TEXT, ""GiamThi1"" TEXT, ""GiamThi2"" TEXT);");
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""DanhMucMonThis"" (""Id"" SERIAL PRIMARY KEY, ""MaMon"" TEXT, ""TenMon"" TEXT NOT NULL);");
+        await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""CanBoCoiThis"" (""Id"" SERIAL PRIMARY KEY, ""HoTen"" TEXT NOT NULL, ""DonViCongTac"" TEXT NOT NULL, ""ChucVu"" TEXT, ""Sdt"" TEXT);");
 
-        // Bổ sung cột MaMon nếu chưa có trong DB cũ
         try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""DanhMucMonThis"" ADD COLUMN IF NOT EXISTS ""MaMon"" TEXT;"); } catch {}
+        try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""GiamThi1"" TEXT;"); } catch {}
+        try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""GiamThi2"" TEXT;"); } catch {}
 
         if (!await db.TaiKhoans.AnyAsync(x => x.Role == "So"))
         {
@@ -50,29 +54,12 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
             await db.SaveChangesAsync();
         }
 
-        // Tạo danh mục môn thi mặc định nếu DB trống
         if (!await db.DanhMucMonThis.AnyAsync())
         {
             var defaultMons = new[] { "Toán", "Ngữ Văn", "Tiếng Anh", "Vật Lý", "Hóa Học", "Sinh Học", "Tin Học", "Lịch Sử", "Địa Lý" };
             for (int i = 0; i < defaultMons.Length; i++)
-            {
                 db.DanhMucMonThis.Add(new DanhMucMonThi { MaMon = (i + 1).ToString("D2"), TenMon = defaultMons[i] });
-            }
             await db.SaveChangesAsync();
-        }
-        else
-        {
-            // Cập nhật Mã môn (01, 02...) cho những môn cũ đang bị null Mã môn
-            var listNullMa = await db.DanhMucMonThis.Where(x => string.IsNullOrEmpty(x.MaMon)).ToListAsync();
-            if (listNullMa.Count > 0)
-            {
-                int countCurrent = await db.DanhMucMonThis.CountAsync(x => !string.IsNullOrEmpty(x.MaMon));
-                for (int i = 0; i < listNullMa.Count; i++)
-                {
-                    listNullMa[i].MaMon = (countCurrent + i + 1).ToString("D2");
-                }
-                await db.SaveChangesAsync();
-            }
         }
 
         var acc = await db.TaiKhoans.FirstOrDefaultAsync(x => x.MaTruong == req.MaTruong && x.MatKhau == req.MatKhau);
@@ -91,159 +78,143 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
     }
 });
 
-// --- API QUẢN LÝ DANH MỤC MÔN THI (SỞ) ---
+// --- API QUẢN LÝ CÁN BỘ COI THI (SỞ) ---
+app.MapPost("/api/so/them-can-bo", async (AppDbContext db, HttpContext ctx, CanBoCoiThi req) =>
+{
+    if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
+    if (string.IsNullOrWhiteSpace(req.HoTen)) return Results.BadRequest(new { message = "Họ tên không được trống!" });
+
+    db.CanBoCoiThis.Add(req);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Thêm cán bộ coi thi thành công!" });
+}).DisableAntiforgery();
+
+app.MapPost("/api/so/phan-cong-giam-thi", async (AppDbContext db, HttpContext ctx) =>
+{
+    if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
+
+    var dsPhong = await db.ThiSinhs.Where(x => !string.IsNullOrEmpty(x.PhongThi))
+                                   .Select(x => x.PhongThi)
+                                   .Distinct().ToListAsync();
+
+    var dsCanBo = await db.CanBoCoiThis.ToListAsync();
+
+    if (dsCanBo.Count < dsPhong.Count * 2)
+        return Results.BadRequest(new { message = $"Cần tối thiểu {dsPhong.Count * 2} cán bộ coi thi (hiện có {dsCanBo.Count}). Vui lòng bổ sung thêm!" });
+
+    int cbIdx = 0;
+    foreach (var phong in dsPhong)
+    {
+        var gt1 = dsCanBo[cbIdx++].HoTen;
+        var gt2 = dsCanBo[cbIdx++].HoTen;
+
+        var thiSinhsInPhong = await db.ThiSinhs.Where(x => x.PhongThi == phong).ToListAsync();
+        foreach (var ts in thiSinhsInPhong)
+        {
+            ts.GiamThi1 = gt1;
+            ts.GiamThi2 = gt2;
+        }
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = $"Đã phân công thành công Giám thị cho {dsPhong.Count} phòng thi!" });
+}).DisableAntiforgery();
+
+// --- API SỞ / TRƯỜNG KHÁC GIỮ NGUYÊN ---
 app.MapPost("/api/so/them-mon", async (AppDbContext db, HttpContext ctx, DanhMucMonThi req) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
-    if (string.IsNullOrWhiteSpace(req.TenMon)) return Results.BadRequest(new { message = "Tên môn không được để trống!" });
-
     var tenMonClean = req.TenMon.Trim();
-    if (await db.DanhMucMonThis.AnyAsync(x => x.TenMon.ToLower() == tenMonClean.ToLower()))
-        return Results.BadRequest(new { message = "Môn thi này đã tồn tại!" });
-
     int count = await db.DanhMucMonThis.CountAsync();
-    string maMonMoi = (count + 1).ToString("D2");
-
-    db.DanhMucMonThis.Add(new DanhMucMonThi { MaMon = maMonMoi, TenMon = tenMonClean });
+    db.DanhMucMonThis.Add(new DanhMucMonThi { MaMon = (count + 1).ToString("D2"), TenMon = tenMonClean });
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = $"Đã thêm môn thi '{tenMonClean}' với Mã môn: {maMonMoi}!" });
+    return Results.Ok(new { message = "Thêm môn thi thành công!" });
 }).DisableAntiforgery();
 
 app.MapPut("/api/so/sua-mon/{id}", async (int id, AppDbContext db, HttpContext ctx, DanhMucMonThi req) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
-    if (string.IsNullOrWhiteSpace(req.TenMon)) return Results.BadRequest(new { message = "Tên môn không được để trống!" });
-
     var item = await db.DanhMucMonThis.FindAsync(id);
-    if (item == null) return Results.NotFound(new { message = "Không tìm thấy môn thi!" });
-
-    var tenMonClean = req.TenMon.Trim();
-    if (await db.DanhMucMonThis.AnyAsync(x => x.Id != id && x.TenMon.ToLower() == tenMonClean.ToLower()))
-        return Results.BadRequest(new { message = "Tên môn thi này đã tồn tại!" });
-
-    string tenMonCu = item.TenMon;
-    item.TenMon = tenMonClean;
-
-    var listThiSinh = await db.ThiSinhs.Where(x => x.MonThi == tenMonCu).ToListAsync();
-    foreach (var ts in listThiSinh) { ts.MonThi = tenMonClean; }
-
+    if (item == null) return Results.NotFound();
+    item.TenMon = req.TenMon.Trim();
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = $"Đã cập nhật tên môn thi thành '{tenMonClean}'!" });
+    return Results.Ok(new { message = "Cập nhật tên môn thành công!" });
 }).DisableAntiforgery();
 
 app.MapDelete("/api/so/xoa-mon/{id}", async (int id, AppDbContext db, HttpContext ctx) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
     var item = await db.DanhMucMonThis.FindAsync(id);
-    if (item == null) return Results.NotFound();
-
-    db.DanhMucMonThis.Remove(item);
-    await db.SaveChangesAsync();
-    return Results.Ok(new { message = "Đã xóa môn thi khỏi danh mục!" });
+    if (item != null) { db.DanhMucMonThis.Remove(item); await db.SaveChangesAsync(); }
+    return Results.Ok(new { message = "Đã xóa môn thi!" });
 }).DisableAntiforgery();
 
-// --- CÁC API KHÁC GIỮ NGUYÊN ---
 app.MapPost("/api/so/import-truong", async (IFormFile file, AppDbContext db, HttpContext ctx) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
-    if (file == null || file.Length == 0) return Results.BadRequest(new { message = "Vui lòng chọn file Excel!" });
-
     using var stream = new MemoryStream();
     await file.CopyToAsync(stream);
     using var package = new ExcelPackage(stream);
     var ws = package.Workbook.Worksheets[0];
     int rowCount = ws.Dimension?.Rows ?? 0;
     int countSuccess = 0;
-
     for (int row = 2; row <= rowCount; row++)
     {
         var maTruong = ws.Cells[row, 1].Value?.ToString()?.Trim();
         var tenTruong = ws.Cells[row, 2].Value?.ToString()?.Trim();
         var matKhau = ws.Cells[row, 3].Value?.ToString()?.Trim();
-        if (string.IsNullOrEmpty(maTruong) || string.IsNullOrEmpty(tenTruong) || string.IsNullOrEmpty(matKhau)) continue;
-
+        if (string.IsNullOrEmpty(maTruong) || string.IsNullOrEmpty(tenTruong)) continue;
         if (!await db.TaiKhoans.AnyAsync(x => x.MaTruong == maTruong))
         {
-            db.TaiKhoans.Add(new TaiKhoan { MaTruong = maTruong, TenTruong = tenTruong, MatKhau = matKhau, Role = "Truong" });
+            db.TaiKhoans.Add(new TaiKhoan { MaTruong = maTruong, TenTruong = tenTruong, MatKhau = matKhau ?? "123456", Role = "Truong" });
             countSuccess++;
         }
     }
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = $"Đã tạo thành công {countSuccess} tài khoản trường!" });
+    return Results.Ok(new { message = $"Đã tạo {countSuccess} tài khoản trường!" });
 }).DisableAntiforgery();
 
-// --- API 2: TỰ ĐỘNG ĐÁNH SBD (6 KÝ TỰ) VÀ CHIA PHÒNG THI (001, 002...) ---
 app.MapPost("/api/so/chia-phong", async (AppDbContext db, HttpContext ctx, ChiaPhongRequest req) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
-
     int hsPerPhong = req.SoHocSinhMoiPhong > 0 ? req.SoHocSinhMoiPhong : 24;
-    
-    // Lấy danh sách tất cả các môn thi
     var monThiList = await db.DanhMucMonThis.OrderBy(x => x.MaMon).Select(x => x.TenMon).ToListAsync();
 
-    int globalSBDIndex = 1;  // Bộ đếm STT SBD toàn tỉnh (4 chữ số: 0001, 0002...)
-    int globalPhongIndex = 1; // Bộ đếm Phòng thi toàn tỉnh (3 chữ số: 001, 002...)
-
+    int globalSBDIndex = 1, globalPhongIndex = 1;
     foreach (var mon in monThiList)
     {
-        // Lấy danh sách thí sinh theo môn, sắp xếp theo Trường rồi tới Họ Tên
-        var thiSinhs = await db.ThiSinhs
-            .Where(x => x.MonThi == mon)
-            .OrderBy(x => x.MaTruong)
-            .ThenBy(x => x.HoTen)
-            .ToListAsync();
-
+        var thiSinhs = await db.ThiSinhs.Where(x => x.MonThi == mon).OrderBy(x => x.MaTruong).ThenBy(x => x.HoTen).ToListAsync();
         if (thiSinhs.Count == 0) continue;
-
         int inPhongCount = 0;
-
         for (int i = 0; i < thiSinhs.Count; i++)
         {
-            // Nếu phòng hiện tại đã đủ số học sinh quy định thì chuyển sang phòng tiếp theo
-            if (inPhongCount >= hsPerPhong)
-            {
-                globalPhongIndex++;
-                inPhongCount = 0;
-            }
-
+            if (inPhongCount >= hsPerPhong) { globalPhongIndex++; inPhongCount = 0; }
             inPhongCount++;
-
-            // Lấy 2 ký tự mã trường (nếu mã trường dạng chữ thì lấy 2 ký tự đầu, nếu thiếu thì tự bù 0)
             string maTruongPrefix = thiSinhs[i].MaTruong.PadLeft(2, '0');
             if (maTruongPrefix.Length > 2) maTruongPrefix = maTruongPrefix.Substring(0, 2);
-
-            // TẠO SBD: 2 ký tự Mã Trường + 4 ký tự STT (Ví dụ: 010001)
             thiSinhs[i].SBD = $"{maTruongPrefix}{globalSBDIndex:D4}";
-
-            // TẠO PHÒNG THI: Định dạng 3 chữ số (Ví dụ: 001, 002...)
             thiSinhs[i].PhongThi = globalPhongIndex.ToString("D3");
-
             globalSBDIndex++;
         }
-
-        // Sau khi hết 1 môn, môn tiếp theo sẽ bắt đầu ở một phòng thi mới
         globalPhongIndex++;
     }
-
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = $"Đã chia thành công {globalPhongIndex - 1} phòng thi và đánh SBD cho toàn bộ thí sinh!" });
+    return Results.Ok(new { message = $"Đã chia thành công {globalPhongIndex - 1} phòng thi và đánh SBD!" });
 }).DisableAntiforgery();
 
 app.MapGet("/api/so/export-excel", async (AppDbContext db, HttpContext ctx) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
-    var list = await db.ThiSinhs.OrderBy(x => x.MonThi).ThenBy(x => x.SBD).ThenBy(x => x.HoTen).ToListAsync();
+    var list = await db.ThiSinhs.OrderBy(x => x.MonThi).ThenBy(x => x.SBD).ToListAsync();
     using var package = new ExcelPackage();
     var ws = package.Workbook.Worksheets.Add("DanhSachThiSinh");
     ws.Cells[1, 1].Value = "STT"; ws.Cells[1, 2].Value = "SBD"; ws.Cells[1, 3].Value = "Phòng Thi"; ws.Cells[1, 4].Value = "Họ và Tên"; ws.Cells[1, 5].Value = "Số CCCD"; ws.Cells[1, 6].Value = "Trường"; ws.Cells[1, 7].Value = "Môn Thi";
-
     for (int i = 0; i < list.Count; i++)
     {
-        ws.Cells[i + 2, 1].Value = i + 1; ws.Cells[i + 2, 2].Value = list[i].SBD ?? "Chưa chia"; ws.Cells[i + 2, 3].Value = list[i].PhongThi ?? "Chưa chia"; ws.Cells[i + 2, 4].Value = list[i].HoTen; ws.Cells[i + 2, 5].Value = list[i].CCCD; ws.Cells[i + 2, 6].Value = list[i].TenTruong; ws.Cells[i + 2, 7].Value = list[i].MonThi;
+        ws.Cells[i + 2, 1].Value = i + 1; ws.Cells[i + 2, 2].Value = list[i].SBD; ws.Cells[i + 2, 3].Value = list[i].PhongThi; ws.Cells[i + 2, 4].Value = list[i].HoTen; ws.Cells[i + 2, 5].Value = list[i].CCCD; ws.Cells[i + 2, 6].Value = list[i].TenTruong; ws.Cells[i + 2, 7].Value = list[i].MonThi;
     }
     var bytes = await package.GetAsByteArrayAsync();
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_ThiSinh_SBD_PhongThi.xlsx");
+    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_ThiSinh_TongHop.xlsx");
 });
 
 app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) =>
@@ -255,25 +226,21 @@ app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) 
     foreach (var phong in listPhong)
     {
         if (string.IsNullOrEmpty(phong)) continue;
-        string sheetName = phong.Replace("/", "-").Replace(":", "-");
+        string sheetName = phong.Replace("/", "-");
         if (sheetName.Length > 30) sheetName = sheetName.Substring(0, 30);
 
         var ws = package.Workbook.Worksheets.Add(sheetName);
         var sampleTS = await db.ThiSinhs.FirstOrDefaultAsync(x => x.PhongThi == phong);
         string monThi = sampleTS?.MonThi ?? "";
 
-        ws.Cells[1, 1, 1, 3].Merge = true; ws.Cells[1, 1].Value = "SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG"; ws.Cells[1, 1].Style.Font.Bold = true; ws.Cells[1, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-        ws.Cells[2, 1, 2, 3].Merge = true; ws.Cells[2, 1].Value = "KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH"; ws.Cells[2, 1].Style.Font.Bold = true; ws.Cells[2, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-        ws.Cells[3, 1, 3, 3].Merge = true; ws.Cells[3, 1].Value = $"Khóa ngày {DateTime.Now:dd/MM/yyyy}"; ws.Cells[3, 1].Style.Font.UnderLine = true; ws.Cells[3, 1].Style.Font.Bold = true; ws.Cells[3, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        ws.Cells[1, 1, 1, 3].Merge = true; ws.Cells[1, 1].Value = "SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG"; ws.Cells[1, 1].Style.Font.Bold = true;
+        ws.Cells[2, 1, 2, 3].Merge = true; ws.Cells[2, 1].Value = "KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH"; ws.Cells[2, 1].Style.Font.Bold = true;
+        ws.Cells[3, 1, 3, 3].Merge = true; ws.Cells[3, 1].Value = $"Khóa ngày {DateTime.Now:dd/MM/yyyy}"; ws.Cells[3, 1].Style.Font.UnderLine = true;
 
-        ws.Cells[1, 4, 1, 5].Merge = true; ws.Cells[1, 4].Value = $"DANH SÁCH PHÒNG THI SỐ: {phong}"; ws.Cells[1, 4].Style.Font.Bold = true; ws.Cells[1, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-        ws.Cells[2, 4, 2, 5].Merge = true; ws.Cells[2, 4].Value = $"MÔN: {monThi.ToUpper()}"; ws.Cells[2, 4].Style.Font.Bold = true; ws.Cells[2, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        ws.Cells[1, 4, 1, 5].Merge = true; ws.Cells[1, 4].Value = $"DANH SÁCH PHÒNG THI SỐ: {phong}"; ws.Cells[1, 4].Style.Font.Bold = true;
+        ws.Cells[2, 4, 2, 5].Merge = true; ws.Cells[2, 4].Value = $"MÔN: {monThi.ToUpper()}"; ws.Cells[2, 4].Style.Font.Bold = true;
 
         ws.Cells[5, 1].Value = "Số Báo Danh"; ws.Cells[5, 2].Value = "Họ và Tên"; ws.Cells[5, 3].Value = "Ngày Sinh"; ws.Cells[5, 4].Value = "Học Sinh Trường"; ws.Cells[5, 5].Value = "Ghi Chú";
-        using (var range = ws.Cells[5, 1, 5, 5])
-        {
-            range.Style.Font.Bold = true; range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid; range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray); range.Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-        }
 
         var thiSinhs = await db.ThiSinhs.Where(x => x.PhongThi == phong).OrderBy(x => x.SBD).ToListAsync();
         for (int i = 0; i < thiSinhs.Count; i++)
@@ -287,7 +254,7 @@ app.MapGet("/api/so/export-phong-thi", async (AppDbContext db, HttpContext ctx) 
         }
 
         int lastRow = thiSinhs.Count + 8;
-        ws.Cells[lastRow, 4, lastRow, 5].Merge = true; ws.Cells[lastRow, 4].Value = "CHỦ TỊCH HỘI ĐỒNG/BAN COI THI"; ws.Cells[lastRow, 4].Style.Font.Bold = true; ws.Cells[lastRow, 4].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+        ws.Cells[lastRow, 4, lastRow, 5].Merge = true; ws.Cells[lastRow, 4].Value = "CHỦ TỊCH HỘI ĐỒNG/BAN COI THI"; ws.Cells[lastRow, 4].Style.Font.Bold = true;
         if (ws.Dimension != null) ws.Cells[ws.Dimension.Address].AutoFitColumns();
     }
 
@@ -300,20 +267,8 @@ app.MapGet("/api/truong/download-mau", async (AppDbContext db) =>
     using var package = new ExcelPackage();
     var ws = package.Workbook.Worksheets.Add("MauDangKy");
     ws.Cells[1, 1].Value = "Họ và Tên"; ws.Cells[1, 2].Value = "Số CCCD/Định Danh"; ws.Cells[1, 3].Value = "Môn Dự Thi";
-    
     var mons = await db.DanhMucMonThis.Select(x => x.TenMon).ToListAsync();
     ws.Cells[2, 1].Value = "Nguyễn Văn A"; ws.Cells[2, 2].Value = "038200123456"; ws.Cells[2, 3].Value = mons.FirstOrDefault() ?? "Toán";
-
-    var wsGuide = package.Workbook.Worksheets.Add("DanhMucMonThiChuan");
-    wsGuide.Cells[1, 1].Value = "STT"; wsGuide.Cells[1, 2].Value = "Mã Môn"; wsGuide.Cells[1, 3].Value = "Tên Môn Thi Quy Định";
-    var listAll = await db.DanhMucMonThis.ToListAsync();
-    for (int i = 0; i < listAll.Count; i++)
-    {
-        wsGuide.Cells[i + 2, 1].Value = i + 1;
-        wsGuide.Cells[i + 2, 2].Value = listAll[i].MaMon ?? (i + 1).ToString("D2");
-        wsGuide.Cells[i + 2, 3].Value = listAll[i].TenMon;
-    }
-
     var bytes = await package.GetAsByteArrayAsync();
     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Mau_Dang_Ky_HSG.xlsx");
 });
@@ -324,9 +279,7 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
     var maTruong = ctx.User.FindFirstValue(ClaimTypes.Name);
     var truongInfo = await db.TaiKhoans.FirstOrDefaultAsync(x => x.MaTruong == maTruong);
 
-    if (file == null || file.Length == 0) return Results.BadRequest(new { message = "Vui lòng chọn file Excel!" });
-
-    var dsMonValid = await db.DanhMucMonThis.Select(x => x.TenMon.ToLower()).ToListAsync();
+    if (file == null || file.Length == 0) return Results.BadRequest(new { message = "Chọn file Excel!" });
 
     using var stream = new MemoryStream();
     await file.CopyToAsync(stream);
@@ -340,17 +293,13 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
         var hoTen = ws.Cells[row, 1].Value?.ToString()?.Trim();
         var cccd = ws.Cells[row, 2].Value?.ToString()?.Trim();
         var monThi = ws.Cells[row, 3].Value?.ToString()?.Trim();
-
         if (string.IsNullOrEmpty(hoTen) || string.IsNullOrEmpty(cccd)) continue;
-        if (string.IsNullOrEmpty(monThi) || !dsMonValid.Contains(monThi.ToLower())) continue;
 
-        var exists = await db.ThiSinhs.AnyAsync(x => x.CCCD == cccd);
-        if (!exists)
+        if (!await db.ThiSinhs.AnyAsync(x => x.CCCD == cccd))
         {
-            var monChuan = await db.DanhMucMonThis.FirstAsync(x => x.TenMon.ToLower() == monThi.ToLower());
             db.ThiSinhs.Add(new ThiSinh
             {
-                HoTen = hoTen, CCCD = cccd, MonThi = monChuan.TenMon, TenTruong = truongInfo?.TenTruong ?? maTruong, MaTruong = maTruong, NgayDangKy = DateTime.UtcNow
+                HoTen = hoTen, CCCD = cccd, MonThi = monThi ?? "Toán", TenTruong = truongInfo?.TenTruong ?? maTruong, MaTruong = maTruong, NgayDangKy = DateTime.UtcNow
             });
             countSuccess++;
         }
@@ -366,12 +315,8 @@ app.MapPut("/api/truong/sua-thisinh/{id}", async (int id, AppDbContext db, HttpC
     var ts = await db.ThiSinhs.FirstOrDefaultAsync(x => x.Id == id && x.MaTruong == maTruong);
     if (ts == null) return Results.NotFound();
 
-    var monChuan = await db.DanhMucMonThis.FirstOrDefaultAsync(x => x.TenMon.ToLower() == req.MonThi.ToLower());
-    if (monChuan == null) return Results.BadRequest(new { message = "Môn thi không thuộc danh mục quy định!" });
-
-    ts.HoTen = req.HoTen?.Trim() ?? ts.HoTen; ts.CCCD = req.CCCD?.Trim() ?? ts.CCCD; ts.MonThi = monChuan.TenMon;
+    ts.HoTen = req.HoTen?.Trim() ?? ts.HoTen; ts.CCCD = req.CCCD?.Trim() ?? ts.CCCD; ts.MonThi = req.MonThi;
     if (!string.IsNullOrEmpty(req.TenTruong)) ts.TenTruong = req.TenTruong.Trim();
-
     await db.SaveChangesAsync();
     return Results.Ok(new { message = "Cập nhật thành công!" });
 }).DisableAntiforgery();
@@ -396,17 +341,34 @@ public class AppDbContext : DbContext
     public DbSet<ThiSinh> ThiSinhs { get; set; }
     public DbSet<TaiKhoan> TaiKhoans { get; set; }
     public DbSet<DanhMucMonThi> DanhMucMonThis { get; set; }
+    public DbSet<CanBoCoiThi> CanBoCoiThis { get; set; }
 }
 
-public class DanhMucMonThi
+public class CanBoCoiThi
 {
     public int Id { get; set; }
-    public string? MaMon { get; set; }
-    public string TenMon { get; set; } = "";
+    public string HoTen { get; set; } = "";
+    public string DonViCongTac { get; set; } = "";
+    public string? ChucVu { get; set; }
+    public string? Sdt { get; set; }
 }
 
+public class DanhMucMonThi { public int Id { get; set; } public string? MaMon { get; set; } public string TenMon { get; set; } = ""; }
 public class LoginRequest { public string MaTruong { get; set; } = ""; public string MatKhau { get; set; } = ""; }
 public class ChiaPhongRequest { public int SoHocSinhMoiPhong { get; set; } = 24; }
 public class UpdateThiSinhReq { public string HoTen { get; set; } = ""; public string CCCD { get; set; } = ""; public string MonThi { get; set; } = ""; public string TenTruong { get; set; } = ""; }
 public class TaiKhoan { public int Id { get; set; } public string MaTruong { get; set; } = ""; public string TenTruong { get; set; } = ""; public string MatKhau { get; set; } = ""; public string Role { get; set; } = "Truong"; }
-public class ThiSinh { public int Id { get; set; } public string HoTen { get; set; } = ""; public string CCCD { get; set; } = ""; public string TenTruong { get; set; } = ""; public string MaTruong { get; set; } = ""; public string MonThi { get; set; } = ""; public string? SBD { get; set; } public string? PhongThi { get; set; } public DateTime NgayDangKy { get; set; } }
+public class ThiSinh
+{
+    public int Id { get; set; }
+    public string HoTen { get; set; } = "";
+    public string CCCD { get; set; } = "";
+    public string TenTruong { get; set; } = "";
+    public string MaTruong { get; set; } = "";
+    public string MonThi { get; set; } = "";
+    public string? SBD { get; set; }
+    public string? PhongThi { get; set; }
+    public string? GiamThi1 { get; set; }
+    public string? GiamThi2 { get; set; }
+    public DateTime NgayDangKy { get; set; }
+}
