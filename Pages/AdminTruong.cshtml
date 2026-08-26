@@ -6,7 +6,7 @@
     if (!User.IsInRole("Truong")) { Response.Redirect("/login"); return; }
     var maTruong = User.Identity?.Name;
     var danhSach = Db.ThiSinhs.Where(x => x.MaTruong == maTruong).OrderBy(x => x.HoTen).ToList();
-    var danhSachMon = Db.DanhMucMonThis.OrderBy(x => x.TenMon).ToList();
+    var danhSachMon = Db.DanhMucMonThis.OrderBy(x => x.MaMon).ToList();
 }
 <!DOCTYPE html>
 <html lang="vi">
@@ -16,82 +16,98 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 </head>
 <body class="p-4 bg-light">
-    <div class="container">
+    <div class="container-fluid" style="max-width: 1300px;">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h3 class="text-primary m-0">ĐĂNG KÝ THI HSG - @User.FindFirst("TenTruong")?.Value</h3>
-            <a href="/api/truong/download-mau" class="btn btn-outline-primary fw-bold">📄 Tải File Excel Mẫu</a>
+            <a href="/api/truong/download-mau" class="btn btn-outline-primary fw-bold">📄 Tải File Excel Mẫu Mới</a>
         </div>
         
         <div class="card p-3 mb-4 shadow-sm">
             <h5>Upload Danh Sách Học Sinh Qua Excel</h5>
-            <p class="text-muted small mb-2">Chỉ các môn nằm trong Danh mục của Sở mới được duyệt tự động.</p>
+            <p class="text-muted small mb-2">
+                Cấu trúc File Excel Mẫu: <b>Cột A (Họ Tên), Cột B (Ngày sinh), Cột C (Số CCCD), Cột D (Môn thi), Cột E (Điểm TBM), Cột F (KQ Học tập)</b>.<br>
+                <span class="text-danger"><b>Điều kiện:</b> KQ Học tập từ Khá trở lên. Điểm TBM dự thi $\ge$ 8.0 (riêng môn Ngữ Văn $\ge$ 7.5).</span>
+            </p>
             <form id="formUpload" class="d-flex gap-2">
                 <input type="file" id="fileExcel" accept=".xlsx" class="form-control" style="max-width: 400px;" required>
-                <button type="submit" id="btnUpload" class="btn btn-success">Upload File Excel</button>
+                <button type="submit" id="btnUpload" class="btn btn-success fw-bold">Upload File Excel</button>
             </form>
             <div id="statusUpload" class="mt-2"></div>
         </div>
 
-        <h5>Danh sách học sinh đã đăng ký (@danhSach.Count học sinh)</h5>
-        <table class="table table-striped table-bordered bg-white shadow-sm align-middle">
-            <thead class="table-dark">
-                <tr>
-                    <th>STT</th>
-                    <th>SBD</th>
-                    <th>Phòng Thi</th>
-                    <th>Họ và Tên</th>
-                    <th>Số CCCD/Mã Định Danh</th>
-                    <th>Tên Trường</th>
-                    <th>Môn Dự Thi</th>
-                    <th class="text-center" style="width: 150px;">Thao Tác</th>
-                </tr>
-            </thead>
-            <tbody>
-                @for (int i = 0; i < danhSach.Count; i++)
-                {
-                    var item = danhSach[i];
-                    <tr id="row-@item.Id">
-                        <td>@(i + 1)</td>
-                        <td><b class="text-danger">@(item.SBD ?? "---")</b></td>
-                        <td><span class="badge bg-secondary">@(item.PhongThi ?? "---")</span></td>
-                        <td><span id="name-@item.Id">@item.HoTen</span></td>
-                        <td><span id="cccd-@item.Id">@item.CCCD</span></td>
-                        <td><span id="truong-@item.Id">@item.TenTruong</span></td>
-                        <td><span class="badge bg-primary" id="mon-@item.Id">@item.MonThi</span></td>
-                        <td class="text-center">
-                            <button onclick="moModalSua(@item.Id)" class="btn btn-sm btn-warning">Sửa</button>
-                            <button onclick="xoaThiSinh(@item.Id)" class="btn btn-sm btn-danger">Xóa</button>
-                        </td>
+        <h5>Danh Sách Học Sinh Đã Đăng Ký Đủ Điều Kiện (@danhSach.Count em)</h5>
+        <div class="table-responsive">
+            <table class="table table-striped table-bordered bg-white shadow-sm align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="text-center" style="width: 50px;">STT</th>
+                        <th class="text-center" style="width: 90px;">SBD</th>
+                        <th class="text-center" style="width: 90px;">Phòng</th>
+                        <th>Họ và Tên</th>
+                        <th class="text-center" style="width: 110px;">Ngày Sinh</th>
+                        <th>Số CCCD/Định Danh</th>
+                        <th>Môn Dự Thi</th>
+                        <th class="text-center" style="width: 100px;">Điểm TBM</th>
+                        <th class="text-center" style="width: 110px;">KQ Học Tập</th>
+                        <th class="text-center" style="width: 130px;">Thao Tác</th>
                     </tr>
-                }
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @if (danhSach.Count == 0)
+                    {
+                        <tr><td colspan="10" class="text-center text-muted py-3">Chưa có học sinh nào đăng ký thành công.</td></tr>
+                    }
+                    else
+                    {
+                        @for (int i = 0; i < danhSach.Count; i++)
+                        {
+                            var item = danhSach[i];
+                            <tr id="row-@item.Id">
+                                <td class="text-center text-muted">@(i + 1)</td>
+                                <td class="text-center"><b class="text-danger">@(item.SBD ?? "---")</b></td>
+                                <td class="text-center"><span class="badge bg-secondary">@(item.PhongThi ?? "---")</span></td>
+                                <td><span id="name-@item.Id">@item.HoTen</span></td>
+                                <td class="text-center"><span id="ns-@item.Id">@item.NgaySinh</span></td>
+                                <td><span id="cccd-@item.Id">@item.CCCD</span></td>
+                                <td><span class="badge bg-primary" id="mon-@item.Id">@item.MonThi</span></td>
+                                <td class="text-center fw-bold"><span id="tbm-@item.Id">@item.DiemTbmMon.ToString("0.0")</span></td>
+                                <td class="text-center"><span class="badge bg-success" id="kq-@item.Id">@item.KetQuaHocTap</span></td>
+                                <td class="text-center">
+                                    <button onclick="moModalSua(@item.Id)" class="btn btn-sm btn-warning me-1">Sửa</button>
+                                    <button onclick="xoaThiSinh(@item.Id)" class="btn btn-sm btn-danger">Xóa</button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
 
-    <!-- MODAL SỬA THÔNG TIN -->
+    <!-- MODAL SỬA THÔNG TIN HỌC SINH -->
     <div class="modal fade" id="modalEdit" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title">Chỉnh sửa thông tin học sinh</h5>
+                    <h5 class="modal-title fs-6 fw-bold">Chỉnh Sửa Thông Tin Học Sinh</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="editId">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Họ và tên</label>
+                        <label class="form-label fw-bold">Họ và Tên</label>
                         <input type="text" id="editHoTen" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Số CCCD/Mã Định Danh</label>
+                        <label class="form-label fw-bold">Ngày Sinh (dd/MM/yyyy)</label>
+                        <input type="text" id="editNgaySinh" class="form-control" required placeholder="Ví dụ: 15/05/2008">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Số CCCD/Định Danh</label>
                         <input type="text" id="editCCCD" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Tên trường</label>
-                        <input type="text" id="editTenTruong" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Môn thi (Chỉ chọn môn quy định)</label>
+                        <label class="form-label fw-bold">Môn Dự Thi</label>
                         <select id="editMonThi" class="form-select">
                             @foreach (var m in danhSachMon)
                             {
@@ -99,10 +115,22 @@
                             }
                         </select>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Điểm TBM Dự Thi</label>
+                        <input type="number" step="0.1" id="editDiemTbm" class="form-control" required placeholder="Ví dụ: 8.5">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Kết Quả Học Tập</label>
+                        <select id="editKetQuaHocTap" class="form-select">
+                            <option value="Tốt">Tốt</option>
+                            <option value="Khá">Khá</option>
+                            <option value="Đạt">Đạt (Không đủ ĐK)</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                    <button type="button" onclick="luuThongTinSua()" class="btn btn-primary">Lưu Thay Đổi</button>
+                    <button type="button" onclick="luuThongTinSua()" class="btn btn-primary fw-bold">Lưu Thay Đổi</button>
                 </div>
             </div>
         </div>
@@ -118,9 +146,11 @@
         function moModalSua(id) {
             document.getElementById('editId').value = id;
             document.getElementById('editHoTen').value = document.getElementById(`name-${id}`).innerText;
+            document.getElementById('editNgaySinh').value = document.getElementById(`ns-${id}`).innerText;
             document.getElementById('editCCCD').value = document.getElementById(`cccd-${id}`).innerText;
-            document.getElementById('editTenTruong').value = document.getElementById(`truong-${id}`).innerText;
             document.getElementById('editMonThi').value = document.getElementById(`mon-${id}`).innerText;
+            document.getElementById('editDiemTbm').value = parseFloat(document.getElementById(`tbm-${id}`).innerText);
+            document.getElementById('editKetQuaHocTap').value = document.getElementById(`kq-${id}`).innerText;
             editModalBS.show();
         }
 
@@ -128,9 +158,11 @@
             const id = document.getElementById('editId').value;
             const payload = {
                 hoTen: document.getElementById('editHoTen').value,
+                ngaySinh: document.getElementById('editNgaySinh').value,
                 cccd: document.getElementById('editCCCD').value,
-                tenTruong: document.getElementById('editTenTruong').value,
-                monThi: document.getElementById('editMonThi').value
+                monThi: document.getElementById('editMonThi').value,
+                diemTbmMon: parseFloat(document.getElementById('editDiemTbm').value),
+                ketQuaHocTap: document.getElementById('editKetQuaHocTap').value
             };
 
             const res = await fetch(`/api/truong/sua-thisinh/${id}`, {
@@ -144,12 +176,12 @@
                 alert(data.message);
                 location.reload();
             } else {
-                alert(data.message || 'Lỗi chọn môn!');
+                alert(data.message || 'Lỗi kiểm tra điều kiện!');
             }
         }
 
         async function xoaThiSinh(id) {
-            if (confirm("Xóa học sinh này?")) {
+            if (confirm("Xóa học sinh này khỏi danh sách đăng ký?")) {
                 const res = await fetch(`/api/truong/xoa-thisinh/${id}`, { method: 'DELETE' });
                 const data = await res.json();
                 if (res.ok) location.reload();
@@ -162,17 +194,33 @@
             const statusDiv = document.getElementById('statusUpload');
             const fileInput = document.getElementById('fileExcel');
 
-            btn.disabled = true; btn.innerText = 'Đang tải lên...';
+            btn.disabled = true; btn.innerText = 'Đang kiểm tra và tải lên...';
+            statusDiv.innerHTML = '';
+
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
             try {
                 const res = await fetch('/api/truong/upload-excel', { method: 'POST', body: formData });
                 const data = await res.json();
-                alert(data.message);
-                location.reload();
+
+                let htmlResult = `<div class="alert alert-info fw-bold mb-2">${data.message}</div>`;
+                if (data.dsLoi && data.dsLoi.length > 0) {
+                    htmlResult += `<div class="alert alert-danger mb-0"><b class="d-block mb-1">Danh sách dòng không đủ điều kiện đăng ký:</b><ul class="mb-0 ps-3 small">`;
+                    data.dsLoi.forEach(err => {
+                        htmlResult += `<li>${err}</li>`;
+                    });
+                    htmlResult += `</ul></div>`;
+                }
+
+                statusDiv.innerHTML = htmlResult;
+                btn.disabled = false; btn.innerText = 'Upload File Excel';
+
+                if (res.ok && (!data.dsLoi || data.dsLoi.length === 0)) {
+                    setTimeout(() => location.reload(), 1500);
+                }
             } catch {
-                statusDiv.innerHTML = `<div class="alert alert-danger">Lỗi kết nối!</div>`;
+                statusDiv.innerHTML = `<div class="alert alert-danger">Lỗi kết nối máy chủ!</div>`;
                 btn.disabled = false; btn.innerText = 'Upload File Excel';
             }
         };
