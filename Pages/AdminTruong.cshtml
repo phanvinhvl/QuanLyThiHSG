@@ -67,11 +67,11 @@
                                 <td class="text-center"><b class="text-danger">@(item.SBD ?? "---")</b></td>
                                 <td class="text-center"><span class="badge bg-secondary">@(item.PhongThi ?? "---")</span></td>
                                 <td><span id="name-@item.Id">@item.HoTen</span></td>
-                                <td class="text-center"><span id="ns-@item.Id">@item.NgaySinh</span></td>
+                                <td class="text-center"><span id="ns-@item.Id">@(item.NgaySinh ?? "")</span></td>
                                 <td><span id="cccd-@item.Id">@item.CCCD</span></td>
                                 <td><span class="badge bg-primary" id="mon-@item.Id">@item.MonThi</span></td>
-                                <td class="text-center fw-bold"><span id="tbm-@item.Id">@item.DiemTbmMon.ToString("0.0")</span></td>
-                                <td class="text-center"><span class="badge bg-success" id="kq-@item.Id">@item.KetQuaHocTap</span></td>
+                                <td class="text-center fw-bold"><span id="tbm-@item.Id">@((item.DiemTbmMon ?? 0).ToString("0.0"))</span></td>
+                                <td class="text-center"><span class="badge bg-success" id="kq-@item.Id">@(item.KetQuaHocTap ?? "Khá")</span></td>
                                 <td class="text-center">
                                     <button onclick="moModalSua(@item.Id)" class="btn btn-sm btn-warning me-1">Sửa</button>
                                     <button onclick="xoaThiSinh(@item.Id)" class="btn btn-sm btn-danger">Xóa</button>
