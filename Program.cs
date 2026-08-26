@@ -39,14 +39,17 @@ app.MapPost("/api/auth/login", async (AppDbContext db, HttpContext ctx, LoginReq
 {
     try
     {
+        // Khởi tạo bảng nếu chưa có
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (""Id"" SERIAL PRIMARY KEY, ""MaTruong"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MatKhau"" TEXT NOT NULL, ""Role"" TEXT NOT NULL);");
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ThiSinhs"" (""Id"" SERIAL PRIMARY KEY, ""HoTen"" TEXT NOT NULL, ""NgaySinh"" TEXT, ""CCCD"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MaTruong"" TEXT NOT NULL, ""MonThi"" TEXT NOT NULL, ""DiemTbmMon"" DOUBLE PRECISION NOT NULL DEFAULT 0, ""KetQuaHocTap"" TEXT, ""NgayDangKy"" TIMESTAMP WITH TIME ZONE NOT NULL, ""SBD"" TEXT, ""PhongThi"" TEXT);");
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""DanhMucMonThis"" (""Id"" SERIAL PRIMARY KEY, ""MaMon"" TEXT, ""TenMon"" TEXT NOT NULL);");
         await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""CauHinhKyThis"" (""Id"" SERIAL PRIMARY KEY, ""TenKyThi"" TEXT NOT NULL, ""KhoaNgay"" TEXT NOT NULL);");
 
+        // Bổ sung các cột mới vào DB cũ để tránh lỗi 500
         try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""NgaySinh"" TEXT;"); } catch {}
         try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""DiemTbmMon"" DOUBLE PRECISION NOT NULL DEFAULT 0;"); } catch {}
         try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""KetQuaHocTap"" TEXT;"); } catch {}
+        try { await db.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""DanhMucMonThis"" ADD COLUMN IF NOT EXISTS ""MaMon"" TEXT;"); } catch {}
 
         if (!await db.TaiKhoans.AnyAsync(x => x.Role == "So"))
         {
@@ -90,7 +93,6 @@ app.MapGet("/api/truong/download-mau", async (AppDbContext db) =>
     using var package = new ExcelPackage();
     var ws = package.Workbook.Worksheets.Add("MauDangKy");
     
-    // Tiêu đề các cột chuẩn mẫu mới
     ws.Cells[1, 1].Value = "Họ và Tên";
     ws.Cells[1, 2].Value = "Ngày Sinh (dd/MM/yyyy)";
     ws.Cells[1, 3].Value = "Số CCCD/Định Danh";
@@ -150,7 +152,6 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
 
         if (string.IsNullOrEmpty(hoTen) && string.IsNullOrEmpty(cccd)) continue;
 
-        // Validation cơ bản
         if (string.IsNullOrEmpty(hoTen)) { dsLoi.Add($"Dòng {row}: Thiếu Họ và Tên!"); continue; }
         if (string.IsNullOrEmpty(cccd)) { dsLoi.Add($"Dòng {row}: Thiếu Số CCCD!"); continue; }
         if (string.IsNullOrEmpty(monThi) || !dsMonValid.Contains(monThi.ToLower())) { dsLoi.Add($"Dòng {row}: Môn '{monThi}' không có trong danh mục của Sở!"); continue; }
@@ -161,7 +162,6 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
             continue;
         }
 
-        // KIỂM TRA ĐIỀU KIỆN 1: KẾT QUẢ HỌC TẬP (Khá, Tốt, Giỏi)
         string kqNorm = (kqHocTap ?? "").ToLower();
         if (kqNorm != "khá" && kqNorm != "kha" && kqNorm != "tốt" && kqNorm != "tot" && kqNorm != "giỏi" && kqNorm != "gioi")
         {
@@ -169,7 +169,6 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
             continue;
         }
 
-        // KIỂM TRA ĐIỀU KIỆN 2: ĐIỂM TBM MÔN DỰ THI
         bool isNgatVan = monThi.ToLower().Contains("ngữ văn") || monThi.ToLower().Contains("ngu van") || monThi.ToLower().Contains("văn");
         double minDiem = isNgatVan ? 7.5 : 8.0;
 
@@ -209,7 +208,6 @@ app.MapPost("/api/truong/upload-excel", async (IFormFile file, AppDbContext db, 
     return Results.Ok(new { message = msg, dsLoi });
 }).DisableAntiforgery();
 
-// --- API SỬA THÍ SINH CÓ ĐỦ CÁC CỘT MỚI VÀ CHECK ĐIỀU KIỆN ---
 app.MapPut("/api/truong/sua-thisinh/{id}", async (int id, AppDbContext db, HttpContext ctx, UpdateThiSinhReq req) =>
 {
     if (!ctx.User.IsInRole("Truong")) return Results.Unauthorized();
@@ -221,17 +219,15 @@ app.MapPut("/api/truong/sua-thisinh/{id}", async (int id, AppDbContext db, HttpC
     var monChuan = await db.DanhMucMonThis.FirstOrDefaultAsync(x => x.TenMon.ToLower() == req.MonThi.ToLower());
     if (monChuan == null) return Results.BadRequest(new { message = "Môn thi không thuộc danh mục quy định!" });
 
-    // Kiểm tra kết quả học tập
     string kqNorm = (req.KetQuaHocTap ?? "").ToLower();
     if (kqNorm != "khá" && kqNorm != "kha" && kqNorm != "tốt" && kqNorm != "tot" && kqNorm != "giỏi" && kqNorm != "gioi")
         return Results.BadRequest(new { message = "Kết quả học tập phải đạt từ Khá trở lên!" });
 
-    // Kiểm tra điểm TBM
     bool isNgatVan = req.MonThi.ToLower().Contains("ngữ văn") || req.MonThi.ToLower().Contains("văn");
     double minDiem = isNgatVan ? 7.5 : 8.0;
 
     if (req.DiemTbmMon < minDiem)
-        return Results.BadRequest(new { message = $"Điểm TBM môn {req.MonThi} đạt {req.DiemTbmMon} không đủ điều kiện (Yêu cầu $\\ge$ {minDiem})!" });
+        return Results.BadRequest(new { message = $"Điểm TBM môn {req.MonThi} đạt {req.DiemTbmMon} không đủ điều kiện (Yêu cầu >= {minDiem})!" });
 
     ts.HoTen = req.HoTen?.Trim() ?? ts.HoTen;
     ts.NgaySinh = req.NgaySinh?.Trim() ?? ts.NgaySinh;
@@ -245,7 +241,6 @@ app.MapPut("/api/truong/sua-thisinh/{id}", async (int id, AppDbContext db, HttpC
     return Results.Ok(new { message = "Cập nhật thông tin học sinh thành công!" });
 }).DisableAntiforgery();
 
-// --- CÁC API KHÁC CỦA SỞ & TRƯỜNG GIỮ NGUYÊN ---
 app.MapPost("/api/so/luu-cau-hinh", async (AppDbContext db, HttpContext ctx, CauHinhKyThi req) =>
 {
     if (!ctx.User.IsInRole("So")) return Results.Unauthorized();
