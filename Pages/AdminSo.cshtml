@@ -4,6 +4,10 @@
 @inject AppDbContext Db
 @{
     if (!User.IsInRole("So")) { Response.Redirect("/login"); return; }
+    var config = Db.CauHinhKyThis.FirstOrDefault();
+    string tenKyThi = config?.TenKyThi ?? "KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH";
+    string khoaNgay = config?.KhoaNgay ?? DateTime.Now.ToString("dd/MM/yyyy");
+
     var danhSachTruong = Db.TaiKhoans.Where(x => x.Role == "Truong").OrderBy(x => x.MaTruong).ToList();
     var danhSachMon = Db.DanhMucMonThis.OrderBy(x => x.MaMon).ToList();
     var tongThiSinh = Db.ThiSinhs.Count();
@@ -24,10 +28,20 @@
                 <span class="text-muted small">Tổng số học sinh đã đăng ký: <b>@tongThiSinh</b> thí sinh</span>
             </div>
             <div class="d-flex gap-2">
+                <button class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#modalCauHinh">⚙️ Cấu Hình Kỳ Thi</button>
                 <a href="/danhsachphongthi" class="btn btn-outline-info fw-bold">📋 Xem & In Phòng Thi</a>
                 <button onclick="chiaPhongThi()" class="btn btn-warning fw-bold">⚡ Chia Phòng & Đánh SBD</button>
                 <a href="/api/so/export-excel" class="btn btn-success fw-bold">📥 Tải File Excel Tổng Hợp</a>
             </div>
+        </div>
+
+        <!-- THEO DÕI THÔNG TIN KỲ THI HIỆN TẠI -->
+        <div class="alert alert-primary d-flex justify-content-between align-items-center shadow-sm py-2 mb-4">
+            <div>
+                <span class="fw-bold">🏆 Tên Kỳ Thi:</span> <span class="text-uppercase fw-bold text-danger">@tenKyThi</span> | 
+                <span class="fw-bold ms-3">📅 Khóa Thi Ngày:</span> <span class="fw-bold text-dark">@khoaNgay</span>
+            </div>
+            <button class="btn btn-sm btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#modalCauHinh">Chỉnh Sửa</button>
         </div>
 
         <div class="row g-4 mb-4">
@@ -77,7 +91,7 @@
                 </div>
             </div>
 
-            <!-- BẢNG 2: IMPORT TÀI KHOẢN TRƯỜNG BẰNG EXCEL -->
+            <!-- BẢNG 2: IMPORT TÀI KHOẢN TRƯỜNG -->
             <div class="col-md-6">
                 <div class="card shadow-sm border-0 h-100">
                     <div class="card-header bg-success text-white py-3">
@@ -102,7 +116,7 @@
             </div>
         </div>
 
-        <!-- BẢNG 3: DANH SÁCH TÀI KHOẢN CÁC TRƯỜNG (CÓ CHỨC NĂNG SỬA/XÓA) -->
+        <!-- BẢNG 3: DANH SÁCH TÀI KHOẢN CÁC TRƯỜNG -->
         <div class="card shadow-sm border-0">
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">
                 <h5 class="card-title m-0 fs-6 fw-bold">🏫 DANH MỤC VÀ TÀI KHOẢN CÁC TRƯỜNG (@danhSachTruong.Count trường)</h5>
@@ -148,6 +162,32 @@
                             }
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CẤU HÌNH KỲ THI & KHÓA THI -->
+    <div class="modal fade" id="modalCauHinh" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fs-6 fw-bold">Khai Báo Thông Tin Kỳ Thi & Khóa Thi</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tên Kỳ Thi</label>
+                        <input type="text" id="cfgTenKyThi" class="form-control" value="@tenKyThi" required placeholder="Ví dụ: KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Khóa Thi Ngày (Hiển thị tiêu đề văn bản)</label>
+                        <input type="text" id="cfgKhoaNgay" class="form-control" value="@khoaNgay" required placeholder="Ví dụ: 15/03/2026 hoặc 15, 16/03/2026">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" onclick="luuCauHinhKyThi()" class="btn btn-primary fw-bold">Lưu Cấu Hình</button>
                 </div>
             </div>
         </div>
@@ -238,7 +278,24 @@
             modalSuaTruongBS = new bootstrap.Modal(document.getElementById('modalSuaTruong'));
         });
 
-        // HÀM XỬ LÝ SỬA / XÓA TRƯỜNG
+        // HÀM LƯU CẤU HÌNH KỲ THI
+        async function luuCauHinhKyThi() {
+            const payload = {
+                tenKyThi: document.getElementById('cfgTenKyThi').value,
+                khoaNgay: document.getElementById('cfgKhoaNgay').value
+            };
+
+            const res = await fetch('/api/so/luu-cau-hinh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            alert(data.message);
+            if (res.ok) location.reload();
+        }
+
         function moModalSuaTruong(id) {
             document.getElementById('editTruongId').value = id;
             document.getElementById('editMaTruong').value = document.getElementById(`truong-ma-${id}`).innerText.trim();
@@ -267,7 +324,7 @@
         }
 
         async function xoaTruong(id, tenTruong) {
-            if (confirm(`CẢNH BÁO: Bạn có chắc muốn xóa trường '${tenTruong}'?\nToàn bộ học sinh đăng ký thuộc trường này cũng sẽ bị xóa!`)) {
+            if (confirm(`CẢNH BÁO: Bạn có chắc muốn xóa trường '${tenTruong}'?`)) {
                 const res = await fetch(`/api/so/xoa-truong/${id}`, { method: 'DELETE' });
                 const data = await res.json();
                 alert(data.message);
@@ -275,7 +332,6 @@
             }
         }
 
-        // HÀM XỬ LÝ MÔN THI
         function moModalSuaMon(id, tenMon) {
             document.getElementById('editMonId').value = id;
             document.getElementById('editTenMon').value = tenMon;
