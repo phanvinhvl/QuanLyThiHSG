@@ -26,39 +26,39 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connect
 
 var app = builder.Build();
 
-// --- TỰ ĐỘNG CẬP NHẬT DATABASE KHI APP KHỞI ĐỘNG (CHỐNG LỖI 500 TOÀN HỆ THỐNG) ---
+// --- TỰ ĐỘNG CẬP NHẬT DATABASE KHI APP KHỞI ĐỘNG ---
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     try
     {
-        // 1. Tạo bảng nếu chưa có
         db.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""TaiKhoans"" (""Id"" SERIAL PRIMARY KEY, ""MaTruong"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MatKhau"" TEXT NOT NULL, ""Role"" TEXT NOT NULL);");
-        db.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""ThiSinhs"" (""Id"" SERIAL PRIMARY KEY, ""HoTen"" TEXT NOT NULL, ""NgaySinh"" TEXT, ""CCCD"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MaTruong"" TEXT NOT NULL, ""MonThi"" TEXT NOT NULL, ""DiemTbmMon"" DOUBLE PRECISION NOT NULL DEFAULT 0, ""KetQuaHocTap"" TEXT, ""NgayDangKy"" TIMESTAMP WITH TIME ZONE NOT NULL, ""SBD"" TEXT, ""PhongThi"" TEXT);");
+        db.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""ThiSinhs"" (""Id"" SERIAL PRIMARY KEY, ""HoTen"" TEXT NOT NULL, ""NgaySinh"" TEXT, ""CCCD"" TEXT NOT NULL, ""TenTruong"" TEXT NOT NULL, ""MaTruong"" TEXT NOT NULL, ""MonThi"" TEXT NOT NULL, ""DiemTbmMon"" DOUBLE PRECISION, ""KetQuaHocTap"" TEXT, ""NgayDangKy"" TIMESTAMP WITH TIME ZONE NOT NULL, ""SBD"" TEXT, ""PhongThi"" TEXT);");
         db.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""DanhMucMonThis"" (""Id"" SERIAL PRIMARY KEY, ""MaMon"" TEXT, ""TenMon"" TEXT NOT NULL);");
         db.Database.ExecuteSqlRaw(@"CREATE TABLE IF NOT EXISTS ""CauHinhKyThis"" (""Id"" SERIAL PRIMARY KEY, ""TenKyThi"" TEXT NOT NULL, ""KhoaNgay"" TEXT NOT NULL);");
 
-        // 2. Ép buộc bổ sung toàn bộ các cột mới nếu CSDL cũ còn thiếu
         try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""NgaySinh"" TEXT;"); } catch {}
-        try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""DiemTbmMon"" DOUBLE PRECISION NOT NULL DEFAULT 0;"); } catch {}
+        try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""DiemTbmMon"" DOUBLE PRECISION;"); } catch {}
         try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""ThiSinhs"" ADD COLUMN IF NOT EXISTS ""KetQuaHocTap"" TEXT;"); } catch {}
         try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""DanhMucMonThis"" ADD COLUMN IF NOT EXISTS ""MaMon"" TEXT;"); } catch {}
 
-        // 3. Khởi tạo tài khoản Sở mặc định
+        // Cập nhật giá trị mặc định cho dữ liệu cũ bị NULL
+        db.Database.ExecuteSqlRaw(@"UPDATE ""ThiSinhs"" SET ""DiemTbmMon"" = 8.0 WHERE ""DiemTbmMon"" IS NULL;");
+        db.Database.ExecuteSqlRaw(@"UPDATE ""ThiSinhs"" SET ""KetQuaHocTap"" = 'Khá' WHERE ""KetQuaHocTap"" IS NULL;");
+        db.Database.ExecuteSqlRaw(@"UPDATE ""ThiSinhs"" SET ""NgaySinh"" = '' WHERE ""NgaySinh"" IS NULL;");
+
         if (!db.TaiKhoans.Any(x => x.Role == "So"))
         {
             db.TaiKhoans.Add(new TaiKhoan { MaTruong = "SO_GD", TenTruong = "Sở Giáo Dục & Đào Tạo", MatKhau = "so@123456", Role = "So" });
             db.SaveChanges();
         }
 
-        // 4. Khởi tạo Cấu hình Kỳ thi mặc định
         if (!db.CauHinhKyThis.Any())
         {
             db.CauHinhKyThis.Add(new CauHinhKyThi { TenKyThi = "KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH", KhoaNgay = DateTime.Now.ToString("dd/MM/yyyy") });
             db.SaveChanges();
         }
 
-        // 5. Khởi tạo Danh mục môn mặc định
         if (!db.DanhMucMonThis.Any())
         {
             var defaultMons = new[] { "Toán", "Ngữ Văn", "Tiếng Anh", "Vật Lý", "Hóa Học", "Sinh Học", "Tin Học", "Lịch Sử", "Địa Lý" };
@@ -395,8 +395,8 @@ app.MapGet("/api/so/export-excel", async (AppDbContext db, HttpContext ctx) =>
         ws.Cells[i + 2, 6].Value = list[i].CCCD;
         ws.Cells[i + 2, 7].Value = list[i].TenTruong;
         ws.Cells[i + 2, 8].Value = list[i].MonThi;
-        ws.Cells[i + 2, 9].Value = list[i].DiemTbmMon;
-        ws.Cells[i + 2, 10].Value = list[i].KetQuaHocTap;
+        ws.Cells[i + 2, 9].Value = list[i].DiemTbmMon ?? 0;
+        ws.Cells[i + 2, 10].Value = list[i].KetQuaHocTap ?? "Khá";
     }
     var bytes = await package.GetAsByteArrayAsync();
     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "DanhSach_ThiSinh_TongHop.xlsx");
@@ -494,13 +494,13 @@ public class ThiSinh
 {
     public int Id { get; set; }
     public string HoTen { get; set; } = "";
-    public string NgaySinh { get; set; } = "";
+    public string? NgaySinh { get; set; }
     public string CCCD { get; set; } = "";
     public string TenTruong { get; set; } = "";
     public string MaTruong { get; set; } = "";
     public string MonThi { get; set; } = "";
-    public double DiemTbmMon { get; set; }
-    public string KetQuaHocTap { get; set; } = "Khá";
+    public double? DiemTbmMon { get; set; }
+    public string? KetQuaHocTap { get; set; }
     public string? SBD { get; set; }
     public string? PhongThi { get; set; }
     public DateTime NgayDangKy { get; set; }
