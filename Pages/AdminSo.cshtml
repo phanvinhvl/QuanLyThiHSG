@@ -4,7 +4,7 @@
 @inject AppDbContext Db
 @{
     if (!User.IsInRole("So")) { Response.Redirect("/login"); return; }
-    var danhSachTruong = Db.TaiKhoans.Where(x => x.Role == "Truong").ToList();
+    var danhSachTruong = Db.TaiKhoans.Where(x => x.Role == "Truong").OrderBy(x => x.MaTruong).ToList();
     var danhSachMon = Db.DanhMucMonThis.OrderBy(x => x.MaMon).ToList();
     var tongThiSinh = Db.ThiSinhs.Count();
 }
@@ -31,7 +31,7 @@
         </div>
 
         <div class="row g-4 mb-4">
-            <!-- BẢNG 1: QUẢN LÝ DANH MỤC MÔN THI (3 CỘT: STT - MÃ MÔN - TÊN MÔN) -->
+            <!-- BẢNG 1: QUẢN LÝ DANH MỤC MÔN THI -->
             <div class="col-md-6">
                 <div class="card shadow-sm border-0 h-100">
                     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3">
@@ -102,10 +102,10 @@
             </div>
         </div>
 
-        <!-- BẢNG 3: DANH SÁCH TÀI KHOẢN CÁC TRƯỜNG -->
+        <!-- BẢNG 3: DANH SÁCH TÀI KHOẢN CÁC TRƯỜNG (CÓ CHỨC NĂNG SỬA/XÓA) -->
         <div class="card shadow-sm border-0">
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">
-                <h5 class="card-title m-0 fs-6 fw-bold">🏫 DANH SÁCH TÀI KHOẢN CÁC TRƯỜNG (@danhSachTruong.Count trường)</h5>
+                <h5 class="card-title m-0 fs-6 fw-bold">🏫 DANH MỤC VÀ TÀI KHOẢN CÁC TRƯỜNG (@danhSachTruong.Count trường)</h5>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -113,16 +113,17 @@
                         <thead class="table-secondary">
                             <tr>
                                 <th class="text-center" style="width: 60px;">STT</th>
-                                <th style="width: 180px;">Mã Trường</th>
+                                <th style="width: 140px;">Mã Trường</th>
                                 <th>Tên Trường THPT / THCS</th>
                                 <th style="width: 180px;">Mật Khẩu Bàn Giao</th>
-                                <th class="text-center" style="width: 180px;">Số HS Đã Đăng Ký</th>
+                                <th class="text-center" style="width: 150px;">Số HS Đã Đăng Ký</th>
+                                <th class="text-center" style="width: 130px;">Thao Tác</th>
                             </tr>
                         </thead>
                         <tbody>
                             @if (danhSachTruong.Count == 0)
                             {
-                                <tr><td colspan="5" class="text-center text-muted py-3">Chưa có tài khoản trường nào được khởi tạo.</td></tr>
+                                <tr><td colspan="6" class="text-center text-muted py-3">Chưa có tài khoản trường nào được khởi tạo.</td></tr>
                             }
                             else
                             {
@@ -132,11 +133,15 @@
                                     var count = Db.ThiSinhs.Count(x => x.MaTruong == tr.MaTruong);
                                     <tr>
                                         <td class="text-center text-muted">@(i + 1)</td>
-                                        <td><code class="fw-bold fs-6">@tr.MaTruong</code></td>
-                                        <td><span class="fw-bold text-dark">@tr.TenTruong</span></td>
-                                        <td><span class="badge bg-light text-dark border">@tr.MatKhau</span></td>
+                                        <td><code class="fw-bold fs-6" id="truong-ma-@tr.Id">@tr.MaTruong</code></td>
+                                        <td><span class="fw-bold text-dark" id="truong-ten-@tr.Id">@tr.TenTruong</span></td>
+                                        <td><span class="badge bg-light text-dark border" id="truong-pass-@tr.Id">@tr.MatKhau</span></td>
                                         <td class="text-center">
                                             <span class="badge bg-primary rounded-pill px-3 py-2">@count học sinh</span>
+                                        </td>
+                                        <td class="text-center">
+                                            <button onclick="moModalSuaTruong(@tr.Id)" class="btn btn-outline-warning btn-sm px-2 py-0 me-1">Sửa</button>
+                                            <button onclick="xoaTruong(@tr.Id, '@tr.TenTruong')" class="btn btn-outline-danger btn-sm px-2 py-0">Xóa</button>
                                         </td>
                                     </tr>
                                 }
@@ -194,13 +199,83 @@
         </div>
     </div>
 
+    <!-- MODAL SỬA THÔNG TIN TRƯỜNG -->
+    <div class="modal fade" id="modalSuaTruong" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fs-6 fw-bold">Chỉnh Sửa Thông Tin Trường</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editTruongId">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Mã Trường (Ví dụ: 01, THPT_A...)</label>
+                        <input type="text" id="editMaTruong" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tên Trường THPT / THCS</label>
+                        <input type="text" id="editTenTruong" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Mật Khẩu Bàn Giao Mới</label>
+                        <input type="text" id="editMatKhauTruong" class="form-control" placeholder="Để trống nếu không đổi">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" onclick="luuSuaTruong()" class="btn btn-warning fw-bold">Lưu Thay Đổi</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        let modalSuaMonBS;
+        let modalSuaMonBS, modalSuaTruongBS;
         document.addEventListener("DOMContentLoaded", () => {
             modalSuaMonBS = new bootstrap.Modal(document.getElementById('modalSuaMon'));
+            modalSuaTruongBS = new bootstrap.Modal(document.getElementById('modalSuaTruong'));
         });
 
+        // HÀM XỬ LÝ SỬA / XÓA TRƯỜNG
+        function moModalSuaTruong(id) {
+            document.getElementById('editTruongId').value = id;
+            document.getElementById('editMaTruong').value = document.getElementById(`truong-ma-${id}`).innerText.trim();
+            document.getElementById('editTenTruong').value = document.getElementById(`truong-ten-${id}`).innerText.trim();
+            document.getElementById('editMatKhauTruong').value = document.getElementById(`truong-pass-${id}`).innerText.trim();
+            modalSuaTruongBS.show();
+        }
+
+        async function luuSuaTruong() {
+            const id = document.getElementById('editTruongId').value;
+            const payload = {
+                maTruong: document.getElementById('editMaTruong').value,
+                tenTruong: document.getElementById('editTenTruong').value,
+                matKhau: document.getElementById('editMatKhauTruong').value
+            };
+
+            const res = await fetch(`/api/so/sua-truong/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            alert(data.message);
+            if (res.ok) location.reload();
+        }
+
+        async function xoaTruong(id, tenTruong) {
+            if (confirm(`CẢNH BÁO: Bạn có chắc muốn xóa trường '${tenTruong}'?\nToàn bộ học sinh đăng ký thuộc trường này cũng sẽ bị xóa!`)) {
+                const res = await fetch(`/api/so/xoa-truong/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                alert(data.message);
+                if (res.ok) location.reload();
+            }
+        }
+
+        // HÀM XỬ LÝ MÔN THI
         function moModalSuaMon(id, tenMon) {
             document.getElementById('editMonId').value = id;
             document.getElementById('editTenMon').value = tenMon;
