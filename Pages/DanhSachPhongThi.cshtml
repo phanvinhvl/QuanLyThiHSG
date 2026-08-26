@@ -3,6 +3,10 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @{
+    var config = Db.CauHinhKyThis.FirstOrDefault();
+    string tenKyThi = config?.TenKyThi ?? "KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH";
+    string khoaNgay = config?.KhoaNgay ?? DateTime.Now.ToString("dd/MM/yyyy");
+
     var listPhong = Db.ThiSinhs.Where(x => !string.IsNullOrEmpty(x.PhongThi)).Select(x => x.PhongThi).Distinct().OrderBy(x => x).ToList();
     string selectedPhong = Request.Query["phong"].ToString();
     if (string.IsNullOrEmpty(selectedPhong) && listPhong.Count > 0)
@@ -55,8 +59,8 @@
         <div class="row mb-4">
             <div class="col-6 text-center">
                 <h6 class="fw-bold mb-1">SỞ GIÁO DỤC VÀ ĐÀO TẠO VĨNH LONG</h6>
-                <h6 class="fw-bold mb-1">KỲ THI HỌC SINH GIỎI THPT CẤP TỈNH</h6>
-                <h6 class="fw-bold text-decoration-underline">Khóa ngày @DateTime.Now.ToString("dd/MM/yyyy")</h6>
+                <h6 class="fw-bold mb-1 text-uppercase">@tenKyThi</h6>
+                <h6 class="fw-bold text-decoration-underline">Khóa ngày @khoaNgay</h6>
             </div>
             <div class="col-6 text-center">
                 <h5 class="fw-bold mb-2">DANH SÁCH PHÒNG THI SỐ: <span class="text-danger">@selectedPhong</span></h5>
